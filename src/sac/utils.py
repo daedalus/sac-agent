@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -59,3 +60,27 @@ class UtilsSDK:
         if isinstance(result, dict):
             return f"{result.get('title', '')} | {result.get('snippet', '')}"
         return f"{getattr(result, 'title', '')} | {getattr(result, 'snippet', '')}"
+
+    @staticmethod
+    def normalize_url(url: str) -> str:
+        parsed = re.split(r"(https?://)", url.strip(), maxsplit=1)
+        if len(parsed) < 2:
+            return url.strip().rstrip("/")
+        scheme = parsed[1].lower()
+        rest = parsed[2].rstrip("/")
+        return f"{scheme}{rest}"
+
+    @staticmethod
+    def filter_by_regex(
+        items: list[Any], field: str, pattern: str
+    ) -> list[Any]:  # noqa: ANN401
+        compiled = re.compile(pattern)
+        return [
+            item
+            for item in items
+            if compiled.search(str(UtilsSDK._get_value(item, field)))
+        ]
+
+    @staticmethod
+    def chunk(items: list[Any], size: int = 10) -> list[list[Any]]:
+        return [items[i : i + size] for i in range(0, len(items), size)]
