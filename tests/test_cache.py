@@ -102,6 +102,7 @@ class BloomFilterByteArrayTests(unittest.TestCase):
 
 class CacheTests(unittest.TestCase):
     """SQLite-backed cache with bloom gate."""
+
     """SQLite-backed cache with bloom gate."""
 
     def setUp(self):
@@ -234,9 +235,6 @@ class CacheTests(unittest.TestCase):
         with patch("os.getenv", return_value="not_an_int"):
             with self.assertRaises(ValueError):
                 _max_entries_from_env()
-
-
-
 
 
 if __name__ == "__main__":

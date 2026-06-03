@@ -54,11 +54,19 @@ class TestAgentIntegration:
             'results = sdk.search.web("test query", limit=3)\n'
             "for r in results:\n"
             '    sdk.fs.write("result:" + r.domain, r.title)\n'
-            '    print(r.title, r.url)'
+            "    print(r.title, r.url)"
         )
         agent._client.chat.completions.create = self._llm_chain(
-            json.dumps({"turn_type": "code", "reasoning": "searching", "code": code_body}),
-            json.dumps({"turn_type": "synthesis", "reasoning": "done", "answer": "Found results about test query."}),
+            json.dumps(
+                {"turn_type": "code", "reasoning": "searching", "code": code_body}
+            ),
+            json.dumps(
+                {
+                    "turn_type": "synthesis",
+                    "reasoning": "done",
+                    "answer": "Found results about test query.",
+                }
+            ),
         )
         answer = agent.run()
         assert "Found results about test query." in answer
@@ -69,27 +77,39 @@ class TestAgentIntegration:
     def test_multi_turn_backfill_then_synthesis(self):
         agent = self._make_agent(max_turns=3)
         agent._client.chat.completions.create = self._llm_chain(
-            json.dumps({
-                "turn_type": "code", "reasoning": "searching",
-                "code": (
-                    'results = sdk.search.web_many(["python", "rust"], limit_per_query=2)\n'
-                    "for lst in results:\n"
-                    "    for r in lst:\n"
-                    '        sdk.fs.write("page:" + r.domain, r.title)\n'
-                    '        print(r.title)'
-                ),
-            }),
-            json.dumps({
-                "turn_type": "code", "reasoning": "reading",
-                "code": (
-                    'keys = sdk.fs.list()\n'
-                    'print(f"Persisted {len(keys)} keys")\n'
-                    'for k in keys:\n'
-                    '    val = sdk.fs.read(k)\n'
-                    '    print(k, val)'
-                ),
-            }),
-            json.dumps({"turn_type": "synthesis", "reasoning": "done", "answer": "Covered python and rust thoroughly."}),
+            json.dumps(
+                {
+                    "turn_type": "code",
+                    "reasoning": "searching",
+                    "code": (
+                        'results = sdk.search.web_many(["python", "rust"], limit_per_query=2)\n'
+                        "for lst in results:\n"
+                        "    for r in lst:\n"
+                        '        sdk.fs.write("page:" + r.domain, r.title)\n'
+                        "        print(r.title)"
+                    ),
+                }
+            ),
+            json.dumps(
+                {
+                    "turn_type": "code",
+                    "reasoning": "reading",
+                    "code": (
+                        "keys = sdk.fs.list()\n"
+                        'print(f"Persisted {len(keys)} keys")\n'
+                        "for k in keys:\n"
+                        "    val = sdk.fs.read(k)\n"
+                        "    print(k, val)"
+                    ),
+                }
+            ),
+            json.dumps(
+                {
+                    "turn_type": "synthesis",
+                    "reasoning": "done",
+                    "answer": "Covered python and rust thoroughly.",
+                }
+            ),
         )
         answer = agent.run()
         assert "python and rust" in answer
@@ -101,16 +121,28 @@ class TestAgentIntegration:
         fixer_content = (
             'results = sdk.search.web("fix test", limit=2)\n'
             "for r in results:\n"
-            '    print(r.title)'
+            "    print(r.title)"
         )
-        fixer_mock = self._mock(
-            f"```python\n{fixer_content}\n```"
-        )
+        fixer_mock = self._mock(f"```python\n{fixer_content}\n```")
 
         chain = [
-            json.dumps({"turn_type": "code", "reasoning": "searching", "code": 'print(undefined_var)'}),
-            json.dumps({"turn_type": "code", "reasoning": "fixed", "code": fixer_content}),
-            json.dumps({"turn_type": "synthesis", "reasoning": "done", "answer": "Recovered from error."}),
+            json.dumps(
+                {
+                    "turn_type": "code",
+                    "reasoning": "searching",
+                    "code": "print(undefined_var)",
+                }
+            ),
+            json.dumps(
+                {"turn_type": "code", "reasoning": "fixed", "code": fixer_content}
+            ),
+            json.dumps(
+                {
+                    "turn_type": "synthesis",
+                    "reasoning": "done",
+                    "answer": "Recovered from error.",
+                }
+            ),
         ]
 
         def side_effect(**kw):
@@ -127,7 +159,13 @@ class TestAgentIntegration:
     def test_force_synthesis_when_max_turns_exceeded(self):
         agent = self._make_agent(max_turns=1)
         agent._client.chat.completions.create = self._llm_chain(
-            json.dumps({"turn_type": "code", "reasoning": "searching", "code": 'print("only turn")'}),
+            json.dumps(
+                {
+                    "turn_type": "code",
+                    "reasoning": "searching",
+                    "code": 'print("only turn")',
+                }
+            ),
             '{"turn_type": "synthesis", "answer": "forced end"}',
         )
         answer = agent.run()
@@ -145,11 +183,15 @@ class TestAgentIntegration:
             'results = sdk.search.web("ref test", limit=2)\n'
             "for r in results:\n"
             '    sdk.fs.write("ref:" + r.domain, r.url)\n'
-            '    print(r.url)'
+            "    print(r.url)"
         )
         agent._client.chat.completions.create = self._llm_chain(
-            json.dumps({"turn_type": "code", "reasoning": "searching", "code": code_body}),
-            json.dumps({"turn_type": "synthesis", "reasoning": "done", "answer": synth_answer}),
+            json.dumps(
+                {"turn_type": "code", "reasoning": "searching", "code": code_body}
+            ),
+            json.dumps(
+                {"turn_type": "synthesis", "reasoning": "done", "answer": synth_answer}
+            ),
         )
         answer = agent.run()
         assert "## References" in answer

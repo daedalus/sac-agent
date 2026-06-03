@@ -58,9 +58,7 @@ class Sandbox:
                     "Install: pip install sac-agent[docker]"
                 ) from e
 
-            Sandbox._docker_session = SandboxSession(
-                lang="python", keep_template=True
-            )
+            Sandbox._docker_session = SandboxSession(lang="python", keep_template=True)
             Sandbox._docker_session.__enter__()
 
         result = Sandbox._docker_session.run(code)

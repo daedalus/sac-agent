@@ -32,7 +32,9 @@ def test_dedupe_by_identity_returns_unique(items):
     assert set(result) == set(items)
 
 
-@given(st.lists(st.tuples(st.integers(), st.text(max_size=10)), min_size=0, max_size=20))
+@given(
+    st.lists(st.tuples(st.integers(), st.text(max_size=10)), min_size=0, max_size=20)
+)
 @settings(max_examples=100)
 def test_dedupe_by_field_preserves_unique_keys(pairs):
     items = [{"id": k, "val": v} for k, v in pairs]
@@ -52,7 +54,11 @@ def test_filter_by_callable_soundness(items):
         assert v > threshold
 
 
-@given(st.lists(st.dictionaries(st.text(max_size=5), st.integers(), max_size=5), max_size=10))
+@given(
+    st.lists(
+        st.dictionaries(st.text(max_size=5), st.integers(), max_size=5), max_size=10
+    )
+)
 @settings(max_examples=100)
 def test_filter_by_field_consistency(dicts):
     field = "kind"
@@ -87,14 +93,18 @@ def test_join_result_fields_dict_contains_both(title, snippet):
 @given(st.from_regex(r"[a-zA-Z0-9_ ]{1,20}"))
 @settings(max_examples=50)
 def test_join_result_fields_search_result(title):
-    r = SearchResult(title=title, url="https://x.com", snippet="snippet", domain="x.com")
+    r = SearchResult(
+        title=title, url="https://x.com", snippet="snippet", domain="x.com"
+    )
     joined = UtilsSDK.join_result_fields(r)
     assert title in joined
     assert "snippet" in joined
 
 
 @given(
-    st.lists(st.dictionaries(st.text(max_size=5), st.integers(), max_size=5), max_size=10),
+    st.lists(
+        st.dictionaries(st.text(max_size=5), st.integers(), max_size=5), max_size=10
+    ),
     st.lists(st.text(max_size=10), max_size=3, min_size=1),
 )
 @settings(max_examples=50)

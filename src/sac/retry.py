@@ -86,7 +86,10 @@ def with_retry(
             )
             logger.info(
                 "Retry %d/%d after %.1fs due to: %s",
-                attempt, max_retries, delay, e,
+                attempt,
+                max_retries,
+                delay,
+                e,
             )
             time.sleep(delay)
 

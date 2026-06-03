@@ -4,6 +4,7 @@ import json
 import os
 import re
 import time
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from openai import OpenAI
@@ -13,12 +14,26 @@ from rich.syntax import Syntax
 
 from sac.core import _httpx_client
 from sac.library import CodeLibrary
+from sac.models import ModelLimits
 from sac.sandbox import Sandbox
 from sac.sdk import AgenticSearchSDK
 
-# TODO: max_tokens should be configurable — long trajectories with many search
-# results may exceed the 4096 budget.
-SYSTEM_PROMPT = """You are an expert research agent using the Search as Code SDK.
+DEFAULT_CONTEXT_LIMIT = 128_000
+CONTEXT_WARN_THRESHOLD = 0.80
+CONTEXT_FORCE_THRESHOLD = 0.92
+
+
+@dataclass
+class UsageTracker:
+    prompt: int = 0
+    completion: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.prompt + self.completion
+
+
+SYSTEM_PROMPT_TEMPLATE = """You are an expert research agent using the Search as Code SDK.
 
 You have access to an `sdk` object with these methods:
 - sdk.search.web(query, limit=8) -> list[SearchResult]
@@ -31,9 +46,12 @@ You have access to an `sdk` object with these methods:
 - sdk.utils.summarize_coverage(items, by_fields)
 - sdk.utils.flatten(list_of_lists), .join_result_fields(result)
 
+Context budget: {context_limit:,} tokens · used {pct_used:.0f}% · {remaining:,} remaining.
+The feedback message after each turn will update this usage.
+
 Protocol: respond with ONE JSON object (no markdown fences).
-- Code turn: {"turn_type": "code", "reasoning": "...", "code": "python code using sdk"}
-- Synthesis turn: {"turn_type": "synthesis", "reasoning": "...", "answer": "final answer with ## References section"}
+- Code turn: {{"turn_type": "code", "reasoning": "...", "code": "python code using sdk"}}
+- Synthesis turn: {{"turn_type": "synthesis", "reasoning": "...", "answer": "final answer with ## References section"}}
 
 Your synthesis answer MUST end with a "## References" section listing every URL
 you used as evidence throughout the research. Use the actual URLs from search
@@ -64,6 +82,7 @@ class SaCAgent:
         https_proxy: str | None = None,
         with_code_library: bool = False,
         sandbox_backend: str = "exec",
+        context_limit: int | None = None,
     ) -> None:
         self.task = task
         self.max_turns = max_turns
@@ -71,6 +90,13 @@ class SaCAgent:
         self.model = model
         self._with_code_library = with_code_library
         self._sandbox_backend = sandbox_backend
+        self.context_limit = ModelLimits.get_context_limit(
+            model, override=context_limit
+        )
+        self._context_limit = self.context_limit
+        self._usage = UsageTracker()
+        self._fix_usage = UsageTracker()
+        self._synthesis_usage = UsageTracker()
         self._base_url = (
             base_url
             or os.environ.get("OPENAI_API_BASE")
@@ -104,6 +130,36 @@ class SaCAgent:
             http_client=_httpx_client(http_proxy, https_proxy),
         )
 
+    def _record_usage(self, resp: Any, tracker: UsageTracker | None = None) -> None:
+        usage = getattr(resp, "usage", None)
+        if usage is None:
+            return
+        t = tracker or self._usage
+        pt = getattr(usage, "prompt_tokens", None)
+        ct = getattr(usage, "completion_tokens", None)
+        if isinstance(pt, int):
+            t.prompt += pt
+        if isinstance(ct, int):
+            t.completion += ct
+
+    @property
+    def _system_prompt(self) -> str:
+        pct = (
+            self._usage.prompt / self._context_limit if self._context_limit > 0 else 0.0
+        )
+        remaining = max(0, self._context_limit - self._usage.prompt)
+        return SYSTEM_PROMPT_TEMPLATE.format(
+            context_limit=self._context_limit,
+            pct_used=pct * 100,
+            remaining=remaining,
+        )
+
+    @property
+    def _context_used_pct(self) -> float:
+        return (
+            self._usage.prompt / self._context_limit if self._context_limit > 0 else 0.0
+        )
+
     def _fix_code(self, code: str, error: str, _attempt: int) -> str | None:
         prompt = (
             f"The following Python code was executed but raised an error:\n\n"
@@ -117,6 +173,7 @@ class SaCAgent:
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
+        self._record_usage(resp, self._fix_usage)
         raw = resp.choices[0].message.content or ""
         if not raw:
             return None
@@ -165,6 +222,7 @@ class SaCAgent:
                             f"[bold yellow]Answer[/] [dim]("
                             f"{self.sdk.search.total_queries} searches · "
                             f"{self.sdk.search.total_results} results · "
+                            f"{self._usage.prompt:,} ctx · "
                             f"{elapsed:.1f}s)[/]"
                         ),
                         border_style="yellow",
@@ -268,11 +326,15 @@ class SaCAgent:
                 }
             )
             turns_left = self.max_turns - self._turn
+            ctx_pct = self._context_used_pct
+            ctx_bar = "▓" * int(ctx_pct * 20) + "░" * (20 - int(ctx_pct * 20))
             self._history.append(
                 {
                     "role": "user",
                     "content": (
                         f"Turn {self._turn} executed ({turns_left} turns left).\n"
+                        f"Context: {ctx_bar} {self._usage.prompt:,}/{self._context_limit:,} "
+                        f"({ctx_pct:.0%})\n"
                         f"Output:\n{output[-2000:]}\n"
                         f"Persisted keys: {fs_keys}\n\n"
                         f"Keep tracking source URLs in sdk.fs — the final "
@@ -280,11 +342,24 @@ class SaCAgent:
                     ),
                 }
             )
+            if ctx_pct >= CONTEXT_FORCE_THRESHOLD:
+                console.print(f"[red]Context at {ctx_pct:.0%} — forcing synthesis.[/]")
+                break
 
         console.print("\n[yellow]Max turns reached — requesting final synthesis.[/]")
         fallback = self._force_synthesis()
         if self.library:
             self.library.flush_all()
+        elapsed = time.time() - self._start_time
+        console.print(
+            f"[dim]Usage: {self._usage.prompt:,} prompt · "
+            f"{self._usage.completion:,} completion · "
+            f"{self._fix_usage.total:,} fix · "
+            f"{self._synthesis_usage.total:,} synthesis · "
+            f"{elapsed:.1f}s · "
+            f"{self.sdk.search.total_queries} searches "
+            f"({self.sdk.search.total_results} results)[/]"
+        )
         return fallback
 
     def _call_model(self) -> str:
@@ -304,10 +379,11 @@ class SaCAgent:
             model=self.model,
             max_tokens=4096,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self._system_prompt},
                 *messages,
             ],
         )
+        self._record_usage(resp)
         msg = resp.choices[0].message
         content = msg.content or ""
         if not content and hasattr(msg, "reasoning_content") and msg.reasoning_content:
@@ -358,6 +434,7 @@ class SaCAgent:
                 {"role": "user", "content": prompt},
             ],
         )
+        self._record_usage(resp, self._synthesis_usage)
         msg = resp.choices[0].message
         raw = msg.content or ""
         if not raw and hasattr(msg, "reasoning_content") and msg.reasoning_content:

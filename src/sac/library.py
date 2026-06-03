@@ -80,7 +80,24 @@ def _save_index(index: dict[str, Any]) -> None:
 
 def _safe_func_name(task: str, code: str) -> str:
     words = re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", task.lower())
-    keywords = {"and", "or", "not", "the", "a", "an", "in", "of", "to", "for", "is", "are", "with", "what", "how", "why"}
+    keywords = {
+        "and",
+        "or",
+        "not",
+        "the",
+        "a",
+        "an",
+        "in",
+        "of",
+        "to",
+        "for",
+        "is",
+        "are",
+        "with",
+        "what",
+        "how",
+        "why",
+    }
     filtered = [w for w in words if w not in keywords and len(w) > 1]
     stem = "_".join(filtered[:4]) if filtered else "research_fn"
     # Derive a short hash from the code
@@ -103,7 +120,11 @@ def _extract_sdk_calls(code: str) -> str:
 
 
 def _generate_function(
-    code: str, task: str, base_url: str, api_key: str, model: str,
+    code: str,
+    task: str,
+    base_url: str,
+    api_key: str,
+    model: str,
 ) -> tuple[str, str]:
     func_name = _safe_func_name(task, code)
     cleaned = _extract_sdk_calls(code)
@@ -114,7 +135,7 @@ def _generate_function(
         f'    """{docstring}'
         f"    Args:\n"
         f"        sdk: AgenticSearchSDK instance\n"
-        f"    \"\"\"\n"
+        f'    """\n'
         f"{body_indent}"
     )
     return func_name, func_code
@@ -151,6 +172,7 @@ def list_functions() -> list[dict[str, Any]]:
 def load_function(name: str) -> Any | None:  # noqa: ANN401
     """Dynamically import a function from the library by name."""
     import importlib.util  # noqa: PLC0415
+
     index = _load_index()
     meta = index.get(name)
     if meta is None:
@@ -175,7 +197,11 @@ class CodeLibrary:
         api_key: str | None = None,
         model: str = "big-pickle",
     ) -> None:
-        self._base_url = base_url or os.environ.get("OPENAI_API_BASE") or "https://opencode.ai/zen/v1"
+        self._base_url = (
+            base_url
+            or os.environ.get("OPENAI_API_BASE")
+            or "https://opencode.ai/zen/v1"
+        )
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY") or "public"
         self._model = model or os.environ.get("SAC_MODEL") or "big-pickle"
         _ensure_dirs()
@@ -203,7 +229,11 @@ class CodeLibrary:
                 return existing_name
 
         func_name, func_code = _generate_function(
-            code, task, self._base_url, self._api_key, self._model,
+            code,
+            task,
+            self._base_url,
+            self._api_key,
+            self._model,
         )
         category = _classify_code(code)
         filepath = _category_file(category)

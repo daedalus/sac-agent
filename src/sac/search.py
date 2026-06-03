@@ -202,7 +202,10 @@ class SearchSDK:
         results: list[SearchResult] = []
         blocks = re.split(r"\n-{3,}\s*\n", content)
         _log(f"split into {len(blocks)} blocks")
-        field_pattern = re.compile(r"^(Title|URL|Highlights|Published|Author|Date|Source|Summary):\s*(.*)", re.IGNORECASE)
+        field_pattern = re.compile(
+            r"^(Title|URL|Highlights|Published|Author|Date|Source|Summary):\s*(.*)",
+            re.IGNORECASE,
+        )
 
         for block in blocks:
             block = block.strip()
@@ -256,7 +259,9 @@ class SearchSDK:
                         s = item.get("snippet") or item.get("description", "")
                         if t and u:
                             results.append(
-                                SearchResult(url=u, title=t, snippet=s, domain=_extract_domain(u))
+                                SearchResult(
+                                    url=u, title=t, snippet=s, domain=_extract_domain(u)
+                                )
                             )
             except json.JSONDecodeError:
                 pass

@@ -32,7 +32,7 @@ from rich.console import Console
 from rich.prompt import Prompt
 
 from sac import core
-from sac.agent import SaCAgent
+from sac.agent import DEFAULT_CONTEXT_LIMIT, SaCAgent
 from sac.cache import disable_cache as _disable_cache
 from sac.sdk import AgenticSearchSDK
 
@@ -117,6 +117,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["exec", "docker"],
         help="Sandbox backend: exec (default, no isolation) or docker (isolated, needs llm-sandbox)",
     )
+    parser.add_argument(
+        "--context-limit",
+        type=int,
+        default=None,
+        help=f"Model context window in tokens (default: {DEFAULT_CONTEXT_LIMIT:,})",
+    )
     return parser
 
 
@@ -152,11 +158,11 @@ def _execute(task: str, args: argparse.Namespace) -> str:
     brave_key = os.environ.get("BRAVE_SEARCH_API_KEY")
     http_proxy = args.http_proxy
     https_proxy = args.https_proxy
-    sandbox_backend = (
-        args.sandbox
-        or os.environ.get("SANDBOX_BACKEND")
-        or "exec"
-    )
+    sandbox_backend = args.sandbox or os.environ.get("SANDBOX_BACKEND") or "exec"
+    context_limit = args.context_limit
+    if context_limit is None:
+        env_val = os.environ.get("SAC_CONTEXT_LIMIT")
+        context_limit = int(env_val) if env_val else DEFAULT_CONTEXT_LIMIT
 
     sdk = AgenticSearchSDK(
         llm_base_url=base_url,
@@ -177,6 +183,7 @@ def _execute(task: str, args: argparse.Namespace) -> str:
         https_proxy=https_proxy,
         with_code_library=args.with_code_library,
         sandbox_backend=sandbox_backend,
+        context_limit=context_limit,
     )
     return agent.run()
 

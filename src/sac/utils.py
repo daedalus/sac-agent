@@ -71,9 +71,7 @@ class UtilsSDK:
         return f"{scheme}{rest}"
 
     @staticmethod
-    def filter_by_regex(
-        items: list[Any], field: str, pattern: str
-    ) -> list[Any]:  # noqa: ANN401
+    def filter_by_regex(items: list[Any], field: str, pattern: str) -> list[Any]:  # noqa: ANN401
         compiled = re.compile(pattern)
         return [
             item
