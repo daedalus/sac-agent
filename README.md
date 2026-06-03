@@ -9,6 +9,7 @@
 
 ```bash
 pip install sac
+uv pip install sac-agent
 ```
 
 ## Usage
