@@ -188,6 +188,75 @@ class SaCAgent:
             return match.group(1).strip()
         return raw.strip()
 
+    def _execute_and_fix(
+        self, code: str, console: Console
+    ) -> tuple[str, str, list[str]]:
+        fixed_code = code
+        fix_attempts = 0
+        output = ""
+        fs_keys: list[str] = []
+
+        while fix_attempts <= self.max_fixes_per_turn:
+            console.print("[dim cyan]  ↻ Executing in sandbox…[/]")
+            t0 = time.time()
+            output = self.sandbox.execute(fixed_code)
+            elapsed_exec = time.time() - t0
+            fs_keys = self.sdk.fs.list()
+
+            searches = self.sdk.search.total_queries
+            results_count = self.sdk.search.total_results
+            console.print(
+                f"  [dim]Executed in {elapsed_exec:.2f}s · "
+                f"Searches: {searches} · "
+                f"Results: {results_count} · "
+                f"FS keys: {fs_keys}[/]"
+            )
+            lines = output.strip().split("\n")
+            tail = "\n".join(lines[-10:]) if len(lines) > 10 else output
+            if tail:
+                console.print(
+                    Panel(
+                        tail[:800],
+                        title="[dim]Output[/]",
+                        border_style="dim",
+                        padding=(0, 1),
+                    )
+                )
+
+            if "--- ERROR ---" not in output:
+                if self.library:
+                    self.library.collect(fixed_code, self.task)
+                break
+
+            fix_attempts += 1
+            if fix_attempts > self.max_fixes_per_turn:
+                console.print(
+                    f"[red]  ✗ {fix_attempts} fix attempts failed, giving up.[/]"
+                )
+                break
+
+            console.print(
+                f"[yellow]  ↻ Fix attempt {fix_attempts}/{self.max_fixes_per_turn}…[/]"
+            )
+            fixed = self._fix_code(fixed_code, output, fix_attempts)
+            if fixed is None or fixed == fixed_code:
+                console.print("[red]  ✗ Fixer returned no change, aborting.[/]")
+                break
+            fixed_code = fixed
+            console.print(
+                Syntax(
+                    fixed_code,
+                    "python",
+                    theme="monokai",
+                    line_numbers=False,
+                    background_color="default",
+                    word_wrap=True,
+                )
+            )
+            console.print()
+
+        return fixed_code, output, fs_keys
+
     def run(self) -> str:
         console = Console()
         self._start_time = time.time()
@@ -262,68 +331,7 @@ class SaCAgent:
             )
             console.print()
 
-            fixed_code = code
-            fix_attempts = 0
-            output = ""
-
-            while fix_attempts <= self.max_fixes_per_turn:
-                console.print("[dim cyan]  ↻ Executing in sandbox…[/]")
-                t0 = time.time()
-                output = self.sandbox.execute(fixed_code)
-                elapsed_exec = time.time() - t0
-                fs_keys = self.sdk.fs.list()
-
-                searches = self.sdk.search.total_queries
-                results_count = self.sdk.search.total_results
-                console.print(
-                    f"  [dim]Executed in {elapsed_exec:.2f}s · "
-                    f"Searches: {searches} · "
-                    f"Results: {results_count} · "
-                    f"FS keys: {fs_keys}[/]"
-                )
-                lines = output.strip().split("\n")
-                tail = "\n".join(lines[-10:]) if len(lines) > 10 else output
-                if tail:
-                    console.print(
-                        Panel(
-                            tail[:800],
-                            title="[dim]Output[/]",
-                            border_style="dim",
-                            padding=(0, 1),
-                        )
-                    )
-
-                if "--- ERROR ---" not in output:
-                    if self.library:
-                        self.library.collect(fixed_code, self.task)
-                    break
-
-                fix_attempts += 1
-                if fix_attempts > self.max_fixes_per_turn:
-                    console.print(
-                        f"[red]  ✗ {fix_attempts} fix attempts failed, giving up.[/]"
-                    )
-                    break
-
-                console.print(
-                    f"[yellow]  ↻ Fix attempt {fix_attempts}/{self.max_fixes_per_turn}…[/]"
-                )
-                fixed = self._fix_code(fixed_code, output, fix_attempts)
-                if fixed is None or fixed == fixed_code:
-                    console.print("[red]  ✗ Fixer returned no change, aborting.[/]")
-                    break
-                fixed_code = fixed
-                console.print(
-                    Syntax(
-                        fixed_code,
-                        "python",
-                        theme="monokai",
-                        line_numbers=False,
-                        background_color="default",
-                        word_wrap=True,
-                    )
-                )
-                console.print()
+            _, output, fs_keys = self._execute_and_fix(code, console)
 
             self._history.append(
                 {

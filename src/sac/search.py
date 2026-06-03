@@ -194,79 +194,82 @@ class SearchSDK:
         _log("No Exa results parsed, using simulation")
         return self._simulate_results(query, limit)
 
+    def _parse_exa_block(
+        self, block: str, field_pattern: re.Pattern[str]
+    ) -> SearchResult | None:
+        title = ""
+        url = ""
+        snippet_lines: list[str] = []
+        in_highlights = False
+        for line in block.split("\n"):
+            line_stripped = line.strip()
+            fm = field_pattern.match(line_stripped)
+            if fm:
+                field_name = fm.group(1).lower()
+                field_value = fm.group(2).strip()
+                if field_name == "title":
+                    title = field_value
+                elif field_name == "url":
+                    url = field_value
+                elif field_name == "highlights":
+                    in_highlights = True
+                    if field_value:
+                        snippet_lines.append(field_value)
+                continue
+            if in_highlights and line_stripped:
+                snippet_lines.append(line_stripped)
+        if not title or not url:
+            _log(f"  skipped block: title={title!r} url={url!r}")
+            return None
+        snippet = " ".join(snippet_lines)
+        snippet = re.sub(r"\s*\[\.\.\.\]\s*", " ", snippet).strip()
+        return SearchResult(
+            url=url, title=title, snippet=snippet, domain=_extract_domain(url)
+        )
+
+    def _parse_exa_json_fallback(self, content: str) -> list[SearchResult]:
+        _log("  attempting JSON fallback for Exa content")
+        results: list[SearchResult] = []
+        try:
+            parsed = json.loads(content)
+            raw_results = parsed if isinstance(parsed, list) else [parsed]
+            for item in raw_results:
+                if not isinstance(item, dict):
+                    continue
+                title = item.get("title") or item.get("name", "")
+                url = item.get("url") or item.get("link", "")
+                snippet = item.get("snippet") or item.get("description", "")
+                if title and url:
+                    results.append(
+                        SearchResult(
+                            url=url,
+                            title=title,
+                            snippet=snippet,
+                            domain=_extract_domain(url),
+                        )
+                    )
+        except json.JSONDecodeError:
+            pass
+        return results
+
     def _parse_exa_content(self, content: str) -> list[SearchResult]:
-        _log(f"_parse_exa_content: {len(content)} chars")
         if not content.strip():
-            _log("empty content, returning []")
             return []
         results: list[SearchResult] = []
         blocks = re.split(r"\n-{3,}\s*\n", content)
-        _log(f"split into {len(blocks)} blocks")
         field_pattern = re.compile(
             r"^(Title|URL|Highlights|Published|Author|Date|Source|Summary):\s*(.*)",
             re.IGNORECASE,
         )
-
         for block in blocks:
             block = block.strip()
             if not block:
                 continue
-            title = ""
-            url = ""
-            snippet_lines: list[str] = []
-            in_highlights = False
-            for line in block.split("\n"):
-                line_stripped = line.strip()
-                fm = field_pattern.match(line_stripped)
-                if fm:
-                    field_name = fm.group(1).lower()
-                    field_value = fm.group(2).strip()
-                    if field_name == "title":
-                        title = field_value
-                    elif field_name == "url":
-                        url = field_value
-                    elif field_name == "highlights":
-                        in_highlights = True
-                        if field_value:
-                            snippet_lines.append(field_value)
-                    continue
-                if in_highlights and line_stripped:
-                    snippet_lines.append(line_stripped)
-
-            snippet = " ".join(snippet_lines)
-            snippet = re.sub(r"\s*\[\.\.\.\]\s*", " ", snippet).strip()
-            if title and url:
-                results.append(
-                    SearchResult(
-                        url=url,
-                        title=title,
-                        snippet=snippet,
-                        domain=_extract_domain(url),
-                    )
-                )
-            else:
-                _log(f"  skipped block: title={title!r} url={url!r}")
-
+            parsed = self._parse_exa_block(block, field_pattern)
+            if parsed is not None:
+                results.append(parsed)
         if not results:
-            _log("  attempting JSON fallback for Exa content")
-            try:
-                parsed = json.loads(content)
-                raw_results = parsed if isinstance(parsed, list) else [parsed]
-                for item in raw_results:
-                    if isinstance(item, dict):
-                        t = item.get("title") or item.get("name", "")
-                        u = item.get("url") or item.get("link", "")
-                        s = item.get("snippet") or item.get("description", "")
-                        if t and u:
-                            results.append(
-                                SearchResult(
-                                    url=u, title=t, snippet=s, domain=_extract_domain(u)
-                                )
-                            )
-            except json.JSONDecodeError:
-                pass
-
-        _log(f"  parsed {len(results)} results total")
+            results = self._parse_exa_json_fallback(content)
         return results
 
     def _simulate_results(self, query: str, limit: int) -> list[SearchResult]:

@@ -16,7 +16,7 @@ execution environment.
 | `mdformat` | Format markdown |
 | `prospector --with-tool ruff --with-tool mypy --with-tool pylint src/` | Lint + type check (with blending) |
 | `vulture --min-confidence 90 src/` | Dead/unused code detection |
-| `lizard src/ --min-cyclomatic-complexity 10` | Code complexity analysis |
+| `lizard src/ --CCN=15` | Code complexity analysis |
 
 ## Development
 
