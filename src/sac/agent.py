@@ -1,0 +1,323 @@
+from __future__ import annotations
+
+import json
+import os
+import re
+import time
+from typing import Any, cast
+
+from openai import OpenAI
+from rich.console import Console
+from rich.panel import Panel
+from rich.syntax import Syntax
+
+from sac.sandbox import Sandbox
+from sac.sdk import AgenticSearchSDK
+
+SYSTEM_PROMPT = """You are an expert research agent using the Search as Code SDK.
+
+You have access to an `sdk` object with these methods:
+- sdk.search.web(query, limit=8) -> list[SearchResult]
+- sdk.search.web_many(queries, limit_per_query=8, concurrency=6) -> list[list[SearchResult]]
+- sdk.llm.synthesize(items, instruction) -> str
+- sdk.llm.plan(context, goal) -> str
+- sdk.llm.extract_many(items, instruction, schema) -> list[dict]
+- sdk.fs.write(key, data), .read(key), .list(), .exists(key)
+- sdk.utils.dedupe_by(items, key), .filter_by(items, field, value)
+- sdk.utils.summarize_coverage(items, by_fields)
+- sdk.utils.flatten(list_of_lists), .join_result_fields(result)
+
+Protocol: respond with ONE JSON object (no markdown fences).
+- Code turn: {"turn_type": "code", "reasoning": "...", "code": "python code using sdk"}
+- Synthesis turn: {"turn_type": "synthesis", "reasoning": "...", "answer": "final answer"}
+
+Strategy:
+1. Fan out many parallel queries first
+2. Read sdk.fs.list() on later turns to see persisted state
+3. Do gap analysis, backfill, then structured extraction
+4. Finally synthesize. Do NOT repeat yourself across turns."""
+
+
+class SaCAgent:
+    def __init__(
+        self,
+        task: str,
+        sdk: AgenticSearchSDK | None = None,
+        max_turns: int = 6,
+        max_fixes_per_turn: int = 3,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str = "big-pickle",
+    ) -> None:
+        self.task = task
+        self.max_turns = max_turns
+        self.max_fixes_per_turn = max_fixes_per_turn
+        self.model = model
+        self._base_url = (
+            base_url
+            or os.environ.get("OPENAI_API_BASE")
+            or "https://opencode.ai/zen/v1"
+        )
+        self._api_key = api_key or os.environ.get("OPENAI_API_KEY") or "public"
+        self.sdk = sdk or AgenticSearchSDK(
+            llm_base_url=self._base_url,
+            llm_api_key=self._api_key,
+            llm_model=model,
+        )
+        self.sandbox = Sandbox(self.sdk)
+        self._turn = 0
+        self._history: list[dict[str, Any]] = []
+        self._start_time = 0.0
+
+        self._client = OpenAI(api_key=self._api_key, base_url=self._base_url)
+
+    def _fix_code(self, code: str, error: str, _attempt: int) -> str | None:
+        prompt = (
+            f"The following Python code was executed but raised an error:\n\n"
+            f"```python\n{code}\n```\n\n"
+            f"Error:\n```\n{error[-2000:]}\n```\n\n"
+            f"Fix the code. Return ONLY valid Python code inside ```python...``` "
+            f"or as a raw code block. No explanation."
+        )
+        resp = self._client.chat.completions.create(
+            model=self.model,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = resp.choices[0].message.content or ""
+        if not raw:
+            return None
+        match = re.search(r"```(?:python)?\n(.*?)```", raw, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        return raw.strip()
+
+    def run(self) -> str:
+        console = Console()
+        self._start_time = time.time()
+        console.print()
+        console.print(
+            Panel(
+                f"[bold white]{self.task}[/]",
+                title="[green]Search as Code — Task[/]",
+                border_style="green",
+            )
+        )
+
+        while self._turn < self.max_turns:
+            self._turn += 1
+            console.print(
+                f"\n[dim]─── Turn {self._turn} / {self.max_turns} ───────────────────────────────[/]"
+            )
+
+            response = self._call_model()
+            action = self._parse_response(response)
+
+            if action is None:
+                return "Error: failed to parse agent response."
+
+            reasoning = action.get("reasoning", "")
+            console.print(f"[dim]  Reasoning:[/] [italic]{reasoning}[/]")
+
+            if action.get("turn_type") == "synthesis":
+                answer = action.get("answer", "No answer provided.")
+                elapsed = time.time() - self._start_time
+                console.print()
+                console.print(
+                    Panel(
+                        answer,
+                        title=(
+                            f"[bold yellow]Answer[/] [dim]("
+                            f"{self.sdk.search.total_queries} searches · "
+                            f"{self.sdk.search.total_results} results · "
+                            f"{elapsed:.1f}s)[/]"
+                        ),
+                        border_style="yellow",
+                        padding=(1, 2),
+                    )
+                )
+                return cast("str", answer)
+
+            code = action.get("code", "")
+            if not code:
+                self._history.append(
+                    {
+                        "role": "assistant",
+                        "content": json.dumps(action),
+                    }
+                )
+                continue
+
+            console.print()
+            console.print(
+                Syntax(
+                    code,
+                    "python",
+                    theme="monokai",
+                    line_numbers=False,
+                    background_color="default",
+                    word_wrap=True,
+                )
+            )
+            console.print()
+
+            fixed_code = code
+            fix_attempts = 0
+            output = ""
+
+            while fix_attempts <= self.max_fixes_per_turn:
+                console.print("[dim cyan]  ↻ Executing in sandbox…[/]")
+                t0 = time.time()
+                output = self.sandbox.execute(fixed_code)
+                elapsed_exec = time.time() - t0
+                fs_keys = self.sdk.fs.list()
+
+                searches = self.sdk.search.total_queries
+                results_count = self.sdk.search.total_results
+                console.print(
+                    f"  [dim]Executed in {elapsed_exec:.2f}s · "
+                    f"Searches: {searches} · "
+                    f"Results: {results_count} · "
+                    f"FS keys: {fs_keys}[/]"
+                )
+                lines = output.strip().split("\n")
+                tail = "\n".join(lines[-10:]) if len(lines) > 10 else output
+                if tail:
+                    console.print(
+                        Panel(
+                            tail[:800],
+                            title="[dim]Output[/]",
+                            border_style="dim",
+                            padding=(0, 1),
+                        )
+                    )
+
+                if "--- ERROR ---" not in output:
+                    break
+
+                fix_attempts += 1
+                if fix_attempts > self.max_fixes_per_turn:
+                    console.print(
+                        f"[red]  ✗ {fix_attempts} fix attempts failed, giving up.[/]"
+                    )
+                    break
+
+                console.print(
+                    f"[yellow]  ↻ Fix attempt {fix_attempts}/{self.max_fixes_per_turn}…[/]"
+                )
+                fixed = self._fix_code(fixed_code, output, fix_attempts)
+                if fixed is None or fixed == fixed_code:
+                    console.print("[red]  ✗ Fixer returned no change, aborting.[/]")
+                    break
+                fixed_code = fixed
+                console.print(
+                    Syntax(
+                        fixed_code,
+                        "python",
+                        theme="monokai",
+                        line_numbers=False,
+                        background_color="default",
+                        word_wrap=True,
+                    )
+                )
+                console.print()
+
+            self._history.append(
+                {
+                    "role": "assistant",
+                    "content": json.dumps(action),
+                }
+            )
+            self._history.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Turn {self._turn} executed.\n"
+                        f"Output:\n{output[-2000:]}\n"
+                        f"Persisted keys: {fs_keys}\n\n"
+                        f"What is the next step? If enough evidence, synthesize."
+                    ),
+                }
+            )
+
+        console.print("\n[yellow]Max turns reached — requesting final synthesis.[/]")
+        fallback = self._force_synthesis()
+        return fallback
+
+    def _call_model(self) -> str:
+        messages: list[dict[str, Any]] = []
+        if not self._history:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Research task: {self.task}\n\n"
+                    f"Available persisted keys: {self.sdk.fs.list()}\n\n"
+                    "Start by fanning out web searches. Respond with a code turn.",
+                }
+            )
+        else:
+            messages = self._history[-6:]
+        resp = self._client.chat.completions.create(
+            model=self.model,
+            max_tokens=4096,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                *messages,
+            ],
+        )
+        msg = resp.choices[0].message
+        content = msg.content or ""
+        if not content and hasattr(msg, "reasoning_content") and msg.reasoning_content:
+            content = msg.reasoning_content
+        return content or ""
+
+    def _parse_response(self, raw: str) -> dict[str, Any] | None:
+        cleaned = re.sub(r"```(?:json)?", "", raw).strip()
+        try:
+            return cast("dict[str, Any] | None", json.loads(cleaned))
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            if match:
+                try:
+                    return cast("dict[str, Any] | None", json.loads(match.group(0)))
+                except json.JSONDecodeError:
+                    return None
+            return None
+
+    def _force_synthesis(self) -> str:
+        fs_keys = self.sdk.fs.list()
+        context_parts = []
+        for key in fs_keys:
+            try:
+                val = self.sdk.fs.read(key)
+                context_parts.append(
+                    f"{key}: {json.dumps(val, default=str, indent=2)[:2000]}"
+                )
+            except Exception:
+                pass
+        prompt = (
+            f"Research task: {self.task}\n\n"
+            f"Available persisted data:\n"
+            + "\n".join(context_parts)
+            + "\n\nSynthesize a final answer based on the available evidence. "
+            "Return only a JSON synthesis turn with turn_type 'synthesis'."
+        )
+        resp = self._client.chat.completions.create(
+            model=self.model,
+            max_tokens=4096,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a research synthesizer. Return JSON only.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+        )
+        msg = resp.choices[0].message
+        raw = msg.content or ""
+        if not raw and hasattr(msg, "reasoning_content") and msg.reasoning_content:
+            raw = msg.reasoning_content
+        parsed = self._parse_response(raw)
+        if parsed and parsed.get("turn_type") == "synthesis":
+            return cast("str", parsed.get("answer", "No synthesis could be generated."))
+        return f"Research completed after {self.max_turns} turns. Check sdk.fs data."

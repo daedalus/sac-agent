@@ -1,0 +1,53 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.0
+    hooks:
+      - id: ruff-format
+      - id: ruff
+        args: [--fix]
+
+  - repo: https://github.com/executablebooks/mdformat
+    rev: v0.7.22
+    hooks:
+      - id: mdformat
+
+  - repo: https://github.com/landscapeio/prospector-pre-commit
+    rev: v1.18.0
+    hooks:
+      - id: prospector
+        additional_dependencies:
+          - ".[with_ruff,with_mypy]"
+        args: [--with-tool=ruff, --with-tool=mypy, --with-tool=pylint, --path=src/]
+
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: v2.11
+    hooks:
+      - id: vulture
+        args: [--min-confidence=90, src/]
+
+  - repo: local
+    hooks:
+      - id: lizard
+        name: Lizard - Code Complexity Analysis
+        entry: lizard
+        args: [--min-cyclomatic-complexity=10, src/]
+        language: python
+        types: [python]
+        additional_dependencies: ["lizard"]
+        stages: [pre-commit]
+
+  - repo: local
+    hooks:
+      - id: build-check
+        name: Build package before push
+        entry: uv run python -m build
+        language: system
+        stages: [pre-push]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
