@@ -101,4 +101,10 @@ def test_join_result_fields_search_result(title):
 def test_summarize_coverage_invariants(items, by_fields):
     summary = UtilsSDK.summarize_coverage(items, by_fields)
     for field in by_fields:
-        assert f"Coverage by '{field}'" in summary or "None: " in summary or "Coverage by" in summary
+        assert f"Coverage by '{field}'" in summary
+        distinct_values: set[str] = set()
+        for item in items:
+            val = item.get(field) if isinstance(item, dict) else None
+            distinct_values.add(str(val) if val is not None else "None")
+        for val in distinct_values:
+            assert val in summary

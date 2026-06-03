@@ -16,6 +16,8 @@ from sac.library import CodeLibrary
 from sac.sandbox import Sandbox
 from sac.sdk import AgenticSearchSDK
 
+# TODO: max_tokens should be configurable — long trajectories with many search
+# results may exceed the 4096 budget.
 SYSTEM_PROMPT = """You are an expert research agent using the Search as Code SDK.
 
 You have access to an `sdk` object with these methods:
