@@ -10,6 +10,7 @@ from urllib.parse import quote_plus
 import requests
 
 from sac.core import SearchResult, _extract_domain, _log, _proxy_config
+from sac.retry import FreeUsageLimitError, RateLimitError, with_retry
 
 MCP_EXA_URL = "https://mcp.exa.ai/mcp"
 
@@ -86,17 +87,35 @@ class SearchSDK:
 
     def _brave_search(self, query: str, limit: int) -> list[SearchResult]:
         assert self._brave_key is not None
-        resp = requests.get(
-            "https://api.search.brave.com/res/v1/web/search",
-            headers={
-                "Accept": "application/json",
-                "X-Subscription-Token": self._brave_key,
-            },
-            params={"q": query, "count": min(limit, 20)},  # type: ignore[arg-type]
-            proxies=_proxy_config(self._http_proxy, self._https_proxy),
-            timeout=10,
-        )
-        resp.raise_for_status()
+
+        def _do_request() -> requests.Response:
+            try:
+                resp = requests.get(
+                    "https://api.search.brave.com/res/v1/web/search",
+                    headers={
+                        "Accept": "application/json",
+                        "X-Subscription-Token": self._brave_key,
+                    },
+                    params={"q": query, "count": min(limit, 20)},  # type: ignore[arg-type]
+                    proxies=_proxy_config(self._http_proxy, self._https_proxy),
+                    timeout=10,
+                )
+            except requests.Timeout as e:
+                raise RateLimitError(f"Brave timeout: {e}") from e
+            except requests.ConnectionError as e:
+                raise RateLimitError(f"Brave connection error: {e}") from e
+            if resp.status_code == 402:
+                raise FreeUsageLimitError(f"Brave 402: {resp.text[:200]}")
+            if resp.status_code == 429:
+                retry_after = resp.headers.get("retry-after")
+                raise RateLimitError(
+                    f"Brave 429: {resp.text[:200]}",
+                    retry_after=float(retry_after) if retry_after else None,
+                )
+            resp.raise_for_status()
+            return resp
+
+        resp = with_retry(_do_request)
         data = resp.json()
         return [
             SearchResult(
@@ -125,17 +144,35 @@ class SearchSDK:
                 },
             }
         )
-        resp = requests.post(
-            MCP_EXA_URL,
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            },
-            proxies=_proxy_config(self._http_proxy, self._https_proxy),
-            timeout=30,
-        )
-        resp.raise_for_status()
+
+        def _do_request() -> requests.Response:
+            try:
+                resp = requests.post(
+                    MCP_EXA_URL,
+                    data=body,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json, text/event-stream",
+                    },
+                    proxies=_proxy_config(self._http_proxy, self._https_proxy),
+                    timeout=30,
+                )
+            except requests.Timeout as e:
+                raise RateLimitError(f"Exa timeout: {e}") from e
+            except requests.ConnectionError as e:
+                raise RateLimitError(f"Exa connection error: {e}") from e
+            if resp.status_code == 402:
+                raise FreeUsageLimitError(f"Exa 402: {resp.text[:200]}")
+            if resp.status_code == 429:
+                retry_after = resp.headers.get("retry-after")
+                raise RateLimitError(
+                    f"Exa 429: {resp.text[:200]}",
+                    retry_after=float(retry_after) if retry_after else None,
+                )
+            resp.raise_for_status()
+            return resp
+
+        resp = with_retry(_do_request)
 
         text = resp.text
         results: list[SearchResult] = []
