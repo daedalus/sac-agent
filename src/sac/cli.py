@@ -149,6 +149,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.80,
         help="Context usage fraction to force synthesis (default: 0.80)",
     )
+    parser.add_argument(
+        "--image",
+        action="append",
+        default=None,
+        dest="images",
+        help="Image file(s) to provide as visual context (can be specified multiple times)",
+    )
     return parser
 
 
@@ -215,6 +222,7 @@ def _execute(task: str, args: argparse.Namespace) -> str:
         max_tokens=args.max_tokens,
         truncation=truncation,
         context_force_threshold=args.context_force_synthesis,
+        images=args.images,
     )
     return agent.run()
 

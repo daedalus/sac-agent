@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
 
-from sac.core import _httpx_client
+from sac.core import _httpx_client, image_to_data_uri
 from sac.library import CodeLibrary
 from sac.models import ModelLimits
 from sac.sandbox import Sandbox
@@ -39,6 +39,8 @@ You have access to an `sdk` object with these methods:
 - sdk.llm.synthesize(items, instruction) -> str
 - sdk.llm.plan(context, goal) -> str
 - sdk.llm.extract_many(items, instruction, schema) -> list[dict]
+- sdk.vision.analyze(image, prompt) -> str
+- sdk.vision.analyze_url(url, prompt) -> str
 - sdk.fs.write(key, data), .read(key), .list(), .exists(key)
 - sdk.utils.dedupe_by(items, key), .filter_by(items, field, value)
 - sdk.utils.summarize_coverage(items, by_fields)
@@ -84,11 +86,16 @@ class SaCAgent:
         max_tokens: int = 8192,
         truncation: int = 10000,
         context_force_threshold: float = 0.80,
+        images: list[str] | None = None,
     ) -> None:
         self.task = task
         self.max_turns = max_turns
         self.max_fixes_per_turn = max_fixes_per_turn
         self.model = model
+        self._images: list[str] = []
+        if images:
+            for img_path in images:
+                self._images.append(image_to_data_uri(img_path))
         self._with_code_library = with_code_library
         self._sandbox_backend = sandbox_backend
         self.context_limit = ModelLimits.get_context_limit(
@@ -379,14 +386,22 @@ class SaCAgent:
     def _call_model(self) -> str:
         messages: list[dict[str, Any]] = []
         if not self._history:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": f"Research task: {self.task}\n\n"
-                    f"Available persisted keys: {self.sdk.fs.list()}\n\n"
-                    "Start by fanning out web searches. Respond with a code turn.",
-                }
+            text = (
+                f"Research task: {self.task}\n\n"
+                f"Available persisted keys: {self.sdk.fs.list()}\n\n"
+                "Start by fanning out web searches. Respond with a code turn."
             )
+            if self._images:
+                msg_content: str | list[dict[str, Any]] = [
+                    {"type": "text", "text": text},
+                    *[
+                        {"type": "image_url", "image_url": {"url": img}}
+                        for img in self._images
+                    ],
+                ]
+            else:
+                msg_content = text
+            messages.append({"role": "user", "content": msg_content})
         else:
             messages = self._history
         resp = self._client.chat.completions.create(

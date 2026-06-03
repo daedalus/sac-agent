@@ -113,6 +113,23 @@ Only return valid JSON, no other text."""
             content = msg.reasoning_content
         return content or ""
 
+    def call_with_images(
+        self, text: str, images: list[str], max_tokens: int | None = None
+    ) -> str:
+        content: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        for img in images:
+            content.append({"type": "image_url", "image_url": {"url": img}})
+        resp = self._client.chat.completions.create(
+            model=self._model,
+            max_tokens=max_tokens or self._max_tokens,
+            messages=[{"role": "user", "content": content}],
+        )
+        msg = resp.choices[0].message
+        result = msg.content or ""
+        if not result and hasattr(msg, "reasoning_content") and msg.reasoning_content:
+            result = msg.reasoning_content
+        return result or ""
+
     def _parse_json_list(
         self, raw: str, schema: dict[str, type | str]
     ) -> list[dict[str, Any]]:

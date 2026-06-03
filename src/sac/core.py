@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -62,6 +64,22 @@ def _proxy_config(
 def _extract_domain(url: str) -> str:
     parsed = urlparse(url)
     return parsed.netloc or ""
+
+
+def image_to_data_uri(path: str | Path) -> str:
+    p = Path(path)
+    suffix = p.suffix.lower()
+    mime_map = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+    }
+    mime = mime_map.get(suffix, "image/png")
+    b64 = base64.b64encode(p.read_bytes()).decode()
+    return f"data:{mime};base64,{b64}"
 
 
 def _format_items(items: list[Any], max_chars: int = 10000) -> str:

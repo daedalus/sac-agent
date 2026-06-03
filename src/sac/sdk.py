@@ -6,6 +6,7 @@ from sac.llm import DEFAULT_MODEL, LLMSDKClient
 from sac.search import SearchSDK
 from sac.storage import FilesystemSDK
 from sac.utils import UtilsSDK
+from sac.vision import VisionSDK
 
 
 class AgenticSearchSDK:
@@ -35,6 +36,7 @@ class AgenticSearchSDK:
             max_tokens=llm_max_tokens,
             max_chars=max_chars,
         )
+        self.vision = VisionSDK(llm=self.llm)
         self.fs = FilesystemSDK(fs_dir=fs_dir)
         self.utils = UtilsSDK()
 
