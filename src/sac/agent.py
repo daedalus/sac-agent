@@ -31,7 +31,11 @@ You have access to an `sdk` object with these methods:
 
 Protocol: respond with ONE JSON object (no markdown fences).
 - Code turn: {"turn_type": "code", "reasoning": "...", "code": "python code using sdk"}
-- Synthesis turn: {"turn_type": "synthesis", "reasoning": "...", "answer": "final answer"}
+- Synthesis turn: {"turn_type": "synthesis", "reasoning": "...", "answer": "final answer with ## References section"}
+
+Your synthesis answer MUST end with a "## References" section listing every URL
+you used as evidence throughout the research. Use the actual URLs from search
+results you stored in sdk.fs. Format as a markdown bullet list.
 
 Strategy:
 1. Fan out many parallel queries first
@@ -262,7 +266,8 @@ class SaCAgent:
                         f"Turn {self._turn} executed.\n"
                         f"Output:\n{output[-2000:]}\n"
                         f"Persisted keys: {fs_keys}\n\n"
-                        f"What is the next step? If enough evidence, synthesize."
+                        f"Keep tracking source URLs in sdk.fs — the final "
+                        f"answer must include a ## References section."
                     ),
                 }
             )
@@ -329,6 +334,8 @@ class SaCAgent:
             f"Available persisted data:\n"
             + "\n".join(context_parts)
             + "\n\nSynthesize a final answer based on the available evidence. "
+            "Your answer MUST end with a ## References section listing every "
+            "URL used as evidence (formatted as markdown bullets). "
             "Return only a JSON synthesis turn with turn_type 'synthesis'."
         )
         resp = self._client.chat.completions.create(
