@@ -37,11 +37,15 @@ Your synthesis answer MUST end with a "## References" section listing every URL
 you used as evidence throughout the research. Use the actual URLs from search
 results you stored in sdk.fs. Format as a markdown bullet list.
 
+You have a limited turn budget (max_turns). The context will tell you
+how many turns remain. Plan accordingly.
+
 Strategy:
-1. Fan out many parallel queries first
+1. Fan out many parallel queries first (web_many for top speed)
 2. Read sdk.fs.list() on later turns to see persisted state
 3. Do gap analysis, backfill, then structured extraction
-4. Finally synthesize. Do NOT repeat yourself across turns."""
+4. Synthesize well before turns run out. Do NOT repeat yourself across turns.
+5. If this is your last or second-to-last turn, you MUST synthesize now."""
 
 
 class SaCAgent:
@@ -49,7 +53,7 @@ class SaCAgent:
         self,
         task: str,
         sdk: AgenticSearchSDK | None = None,
-        max_turns: int = 6,
+        max_turns: int = 15,
         max_fixes_per_turn: int = 3,
         base_url: str | None = None,
         api_key: str | None = None,
@@ -259,11 +263,12 @@ class SaCAgent:
                     "content": json.dumps(action),
                 }
             )
+            turns_left = self.max_turns - self._turn
             self._history.append(
                 {
                     "role": "user",
                     "content": (
-                        f"Turn {self._turn} executed.\n"
+                        f"Turn {self._turn} executed ({turns_left} turns left).\n"
                         f"Output:\n{output[-2000:]}\n"
                         f"Persisted keys: {fs_keys}\n\n"
                         f"Keep tracking source URLs in sdk.fs — the final "

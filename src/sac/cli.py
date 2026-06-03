@@ -96,8 +96,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-turns",
         type=int,
-        default=6,
-        help="Maximum research iterations before synthesis (default: 6)",
+        default=15,
+        help="Maximum research iterations before synthesis (default: 15)",
     )
     parser.add_argument(
         "-v",

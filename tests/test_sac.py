@@ -387,7 +387,7 @@ class TestSaCAgent:
                 api_key="test",
             )
             assert agent.task == "test task"
-            assert agent.max_turns == 6
+            assert agent.max_turns == 15
 
     def test_fix_code_extracts_from_fence(self):
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
