@@ -18,6 +18,8 @@ class AgenticSearchSDK:
         brave_key: str | None = None,
         http_proxy: str | None = None,
         https_proxy: str | None = None,
+        llm_max_tokens: int = 8192,
+        max_chars: int = 10000,
     ) -> None:
         self.search = SearchSDK(
             brave_key=brave_key,
@@ -30,6 +32,8 @@ class AgenticSearchSDK:
             model=llm_model,
             http_proxy=http_proxy,
             https_proxy=https_proxy,
+            max_tokens=llm_max_tokens,
+            max_chars=max_chars,
         )
         self.fs = FilesystemSDK(fs_dir=fs_dir)
         self.utils = UtilsSDK()

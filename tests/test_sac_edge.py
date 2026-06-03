@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,7 +15,7 @@ from sac import (
     SearchResult,
     SearchSDK,
 )
-from sac.core import _proxy_config
+from sac.core import _httpx_client, _log, _proxy_config
 
 
 class TestCoreEdge:
@@ -47,6 +48,26 @@ class TestCoreEdge:
         r = SearchResult(url="https://x.com", title="X")
         assert "SearchResult" in repr(r)
         assert "x.com" in repr(r)
+
+    def test_httpx_client_no_proxy(self):
+        with patch.dict(os.environ, {}, clear=True):
+            client = _httpx_client()
+            assert client is None
+
+    def test_log_verbose(self):
+        from sac.core import VERBOSE
+
+        with patch("sys.stderr"):
+            VERBOSE = True
+            try:
+                _log("test message")
+            finally:
+                VERBOSE = False
+
+    def test_proxy_config_none(self):
+        with patch.dict(os.environ, {}, clear=True):
+            config = _proxy_config()
+            assert config == {}
 
 
 class TestSearchSDKEdge:
@@ -178,6 +199,21 @@ class TestLLMSDKClientEdge:
         result = llm._parse_json_list(raw, {})
         assert result == []
 
+    def test_parse_json_list_decode_error(self, llm):
+        raw = '[{bad json}]'
+        result = llm._parse_json_list(raw, {})
+        assert result == []
+
+    def test_extract_many_chunks(self, mocker):
+        client = LLMSDKClient(api_key="test", base_url="http://localhost:0")
+        mock_chunk = mocker.MagicMock()
+        mock_chunk.side_effect = lambda items, *a, **kw: [{"id": item["id"]} for item in items]
+        mocker.patch.object(client, "_extract_chunk", mock_chunk)
+        items = [{"id": i} for i in range(12)]
+        result = client.extract_many(items, "extract", {"id": int})
+        assert len(result) == 12
+        assert mock_chunk.call_count == 2
+
 
 @pytest.fixture
 def llm():
@@ -252,6 +288,121 @@ class TestSaCAgentEdge:
         agent._client.chat.completions.create = MagicMock(return_value=mock_resp)
         result = agent._force_synthesis()
         assert result == "forced answer"
+
+    def test_record_usage_none(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
+            agent = SaCAgent(task="x", base_url="http://localhost:0", api_key="test")
+        agent._record_usage(MagicMock(usage=None))
+        assert agent._usage.total == 0
+
+    def test_record_usage_counts(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
+            agent = SaCAgent(task="x", base_url="http://localhost:0", api_key="test")
+        resp = MagicMock()
+        resp.usage.prompt_tokens = 100
+        resp.usage.completion_tokens = 50
+        agent._record_usage(resp)
+        assert agent._usage.prompt == 100
+        assert agent._usage.completion == 50
+
+    def test_run_parse_failure_with_library(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
+            agent = SaCAgent(
+                task="x",
+                base_url="http://localhost:0",
+                api_key="test",
+                with_code_library=True,
+            )
+        mock_resp = MagicMock()
+        mock_resp.choices[0].message.content = "not json"
+        agent._client.chat.completions.create = MagicMock(return_value=mock_resp)
+        result = agent.run()
+        assert "Error: failed to parse" in result
+
+    def test_empty_code_turn(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
+            agent = SaCAgent(task="x", base_url="http://localhost:0", api_key="test", max_turns=1)
+        mock_code = MagicMock()
+        mock_code.choices[
+            0
+        ].message.content = '{"turn_type": "code", "reasoning": "test", "code": ""}'
+        agent._client.chat.completions.create = MagicMock(return_value=mock_code)
+        result = agent.run()
+        assert "turns" in result.lower() or "synthesis" in result.lower()
+
+    def test_call_model_uses_reasoning_content(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
+            agent = SaCAgent(task="x", base_url="http://localhost:0", api_key="test")
+        mock_resp = MagicMock()
+        msg = MagicMock()
+        msg.content = None
+        msg.reasoning_content = "reasoning output"
+        mock_resp.choices = [MagicMock(message=msg)]
+        agent._client.chat.completions.create = MagicMock(return_value=mock_resp)
+        result = agent._call_model()
+        assert result == "reasoning output"
+
+    def test_force_synthesis_fallback(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
+            agent = SaCAgent(task="x", base_url="http://localhost:0", api_key="test", max_turns=1)
+        mock_resp = MagicMock()
+        mock_resp.choices[0].message.content = 'not synthesis json'
+        agent._client.chat.completions.create = MagicMock(return_value=mock_resp)
+        result = agent._force_synthesis()
+        assert "Research completed after" in result
+
+    def test_run_context_force_synthesis(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
+            agent = SaCAgent(
+                task="x",
+                base_url="http://localhost:0",
+                api_key="test",
+                max_turns=5,
+                context_force_threshold=0.0,
+            )
+        mock_code = MagicMock()
+        mock_code.choices[0].message.content = '{"turn_type": "code", "reasoning": "t", "code": "print(1)"}'
+        mock_synth = MagicMock()
+        mock_synth.choices[0].message.content = '{"turn_type": "synthesis", "answer": "forced by context"}'
+        agent._client.chat.completions.create = MagicMock(side_effect=[mock_code, mock_synth])
+        result = agent.run()
+        assert "forced by context" in result
+
+
+class TestUtilsSDKEdge:
+    def test_normalize_url_with_scheme(self):
+        from sac import UtilsSDK
+
+        assert UtilsSDK.normalize_url("https://Example.COM/Path/") == "https://Example.COM/Path"
+
+    def test_normalize_url_without_scheme(self):
+        from sac import UtilsSDK
+
+        assert UtilsSDK.normalize_url("example.com") == "example.com"
+
+    def test_filter_by_regex(self):
+        from sac import UtilsSDK
+
+        items = [{"name": "hello"}, {"name": "world"}, {"name": "help"}]
+        result = UtilsSDK.filter_by_regex(items, "name", r"^hel")
+        assert len(result) == 2
+        assert all(r["name"].startswith("hel") for r in result)
+
+    def test_chunk(self):
+        from sac import UtilsSDK
+
+        items = list(range(10))
+        chunks = UtilsSDK.chunk(items, size=3)
+        assert chunks == [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]
+
+    def test_get_value_with_object(self):
+        from sac import UtilsSDK
+
+        class Obj:
+            x = 42
+
+        val = UtilsSDK._get_value(Obj(), "x")
+        assert val == 42
 
 
 class TestCLI:
@@ -361,3 +512,42 @@ class TestSandboxEdge:
         with patch("builtins.__import__", side_effect=ImportError("no llm-sandbox")):
             with pytest.raises(ImportError, match="llm-sandbox"):
                 sandbox.execute("print('x')")
+
+    def test_docker_backend_non_zero_return(self):
+        sdk = AgenticSearchSDK(llm_api_key="test", llm_base_url="http://localhost:0")
+        result_mock = MagicMock()
+        result_mock.text = "something went wrong"
+        result_mock.return_code = 1
+        session_mock = MagicMock()
+        session_mock.run.return_value = result_mock
+        clean = Sandbox._docker_session
+        Sandbox._docker_session = session_mock
+        try:
+            sandbox = Sandbox(sdk, backend="docker")
+            output = sandbox.execute('print("x")')
+            assert "--- ERROR ---" in output
+        finally:
+            Sandbox._docker_session = clean
+
+    def test_docker_backend_close(self):
+        sdk = AgenticSearchSDK(llm_api_key="test", llm_base_url="http://localhost:0")
+        session_mock = MagicMock()
+        clean = Sandbox._docker_session
+        Sandbox._docker_session = session_mock
+        try:
+            sandbox = Sandbox(sdk, backend="docker")
+            sandbox.close()
+            assert Sandbox._docker_session is None
+            session_mock.__exit__.assert_called_once()
+        finally:
+            Sandbox._docker_session = clean
+
+    def test_docker_backend_close_idempotent(self):
+        sdk = AgenticSearchSDK(llm_api_key="test", llm_base_url="http://localhost:0")
+        clean = Sandbox._docker_session
+        Sandbox._docker_session = None
+        try:
+            sandbox = Sandbox(sdk, backend="docker")
+            sandbox.close()
+        finally:
+            Sandbox._docker_session = clean

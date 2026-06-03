@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+import json
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -41,3 +42,28 @@ class TestModelLimits:
         with patch("sac.models.requests.get", side_effect=Exception("network down")):
             limit = ModelLimits.get_context_limit("gpt-4o")
             assert limit == 128000
+
+    def test_corrupt_file_cache_falls_back(self, _isolated, tmp_path):
+        cache_file = tmp_path / "cache" / "models_registry.json"
+        cache_file.parent.mkdir(parents=True)
+        cache_file.write_text("not valid json")
+        limit = ModelLimits.get_context_limit("gpt-4o")
+        assert limit == 128000
+
+    def test_http_fetch_succeeds(self, _isolated, tmp_path):
+        mock_data = {
+            "provider": {
+                "models": {
+                    "custom-model-v1": {"limit": {"context": 64000}},
+                }
+            }
+        }
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = mock_data
+        with patch("sac.models.requests.get", return_value=mock_resp):
+            limit = ModelLimits.get_context_limit("custom-model-v1")
+            assert limit == 64000
+            cache_file = tmp_path / "cache" / "models_registry.json"
+            assert cache_file.exists()
+            cached = json.loads(cache_file.read_text())
+            assert cached == mock_data

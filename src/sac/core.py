@@ -64,7 +64,7 @@ def _extract_domain(url: str) -> str:
     return parsed.netloc or ""
 
 
-def _format_items(items: list[Any], max_chars: int = 8000) -> str:
+def _format_items(items: list[Any], max_chars: int = 10000) -> str:
     text = json.dumps(items, indent=2, default=str)
     if len(text) > max_chars:
         text = text[:max_chars] + "\n... [truncated]"

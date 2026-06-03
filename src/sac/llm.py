@@ -20,7 +20,8 @@ class LLMSDKClient:
         base_url: str | None = None,
         api_key: str | None = None,
         model: str = DEFAULT_MODEL,
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
+        max_chars: int = 10000,
         http_proxy: str | None = None,
         https_proxy: str | None = None,
     ) -> None:
@@ -30,6 +31,7 @@ class LLMSDKClient:
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY") or DEFAULT_API_KEY
         self._model = model
         self._max_tokens = max_tokens
+        self._max_chars = max_chars
         self._client = OpenAI(
             api_key=self._api_key,
             base_url=self._base_url,
@@ -37,7 +39,7 @@ class LLMSDKClient:
         )
 
     def synthesize(self, items: list[Any], instruction: str) -> str:
-        context = _format_items(items)
+        context = _format_items(items, max_chars=self._max_chars)
         prompt = f"""<context>
 {context}
 </context>
@@ -96,7 +98,7 @@ Items:
 
 Return a JSON list of objects matching the schema. Use null for missing fields.
 Only return valid JSON, no other text."""
-        raw = self._call_llm(prompt, max_tokens=4096)
+        raw = self._call_llm(prompt, max_tokens=self._max_tokens)
         return self._parse_json_list(raw, schema)
 
     def _call_llm(self, prompt: str, max_tokens: int | None = None) -> str:

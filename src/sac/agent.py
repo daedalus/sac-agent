@@ -19,8 +19,6 @@ from sac.sandbox import Sandbox
 from sac.sdk import AgenticSearchSDK
 
 DEFAULT_CONTEXT_LIMIT = 128_000
-CONTEXT_WARN_THRESHOLD = 0.80
-CONTEXT_FORCE_THRESHOLD = 0.92
 
 
 @dataclass
@@ -83,6 +81,9 @@ class SaCAgent:
         with_code_library: bool = False,
         sandbox_backend: str = "exec",
         context_limit: int | None = None,
+        max_tokens: int = 8192,
+        truncation: int = 10000,
+        context_force_threshold: float = 0.80,
     ) -> None:
         self.task = task
         self.max_turns = max_turns
@@ -94,6 +95,9 @@ class SaCAgent:
             model, override=context_limit
         )
         self._context_limit = self.context_limit
+        self._max_tokens = max_tokens
+        self._truncation = truncation
+        self._context_force_threshold = context_force_threshold
         self._usage = UsageTracker()
         self._fix_usage = UsageTracker()
         self._synthesis_usage = UsageTracker()
@@ -109,6 +113,8 @@ class SaCAgent:
             llm_model=model,
             http_proxy=http_proxy,
             https_proxy=https_proxy,
+            llm_max_tokens=max_tokens,
+            max_chars=truncation,
         )
         self.sandbox = Sandbox(self.sdk, backend=self._sandbox_backend)
         self.library = (
@@ -164,13 +170,13 @@ class SaCAgent:
         prompt = (
             f"The following Python code was executed but raised an error:\n\n"
             f"```python\n{code}\n```\n\n"
-            f"Error:\n```\n{error[-2000:]}\n```\n\n"
+            f"Error:\n```\n{error[-self._truncation:]}\n```\n\n"
             f"Fix the code. Return ONLY valid Python code inside ```python...``` "
             f"or as a raw code block. No explanation."
         )
         resp = self._client.chat.completions.create(
             model=self.model,
-            max_tokens=4096,
+            max_tokens=self._max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
         self._record_usage(resp, self._fix_usage)
@@ -335,14 +341,14 @@ class SaCAgent:
                         f"Turn {self._turn} executed ({turns_left} turns left).\n"
                         f"Context: {ctx_bar} {self._usage.prompt:,}/{self._context_limit:,} "
                         f"({ctx_pct:.0%})\n"
-                        f"Output:\n{output[-2000:]}\n"
+                        f"Output:\n{output[-self._truncation:]}\n"
                         f"Persisted keys: {fs_keys}\n\n"
                         f"Keep tracking source URLs in sdk.fs — the final "
                         f"answer must include a ## References section."
                     ),
                 }
             )
-            if ctx_pct >= CONTEXT_FORCE_THRESHOLD:
+            if ctx_pct >= self._context_force_threshold:
                 console.print(f"[red]Context at {ctx_pct:.0%} — forcing synthesis.[/]")
                 break
 
@@ -377,7 +383,7 @@ class SaCAgent:
             messages = self._history
         resp = self._client.chat.completions.create(
             model=self.model,
-            max_tokens=4096,
+            max_tokens=self._max_tokens,
             messages=[
                 {"role": "system", "content": self._system_prompt},
                 *messages,
@@ -410,7 +416,7 @@ class SaCAgent:
             try:
                 val = self.sdk.fs.read(key)
                 context_parts.append(
-                    f"{key}: {json.dumps(val, default=str, indent=2)[:2000]}"
+                    f"{key}: {json.dumps(val, default=str, indent=2)[:self._truncation]}"
                 )
             except Exception:
                 pass
@@ -425,7 +431,7 @@ class SaCAgent:
         )
         resp = self._client.chat.completions.create(
             model=self.model,
-            max_tokens=4096,
+            max_tokens=self._max_tokens,
             messages=[
                 {
                     "role": "system",

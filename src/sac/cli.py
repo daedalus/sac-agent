@@ -26,6 +26,7 @@ import argparse
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 from rich.console import Console
@@ -39,6 +40,8 @@ from sac.sdk import AgenticSearchSDK
 DEFAULT_BASE_URL = "https://opencode.ai/zen/v1"
 DEFAULT_API_KEY = "public"
 DEFAULT_MODEL = "big-pickle"
+DEFAULT_MAX_TOKENS = 8192
+DEFAULT_TRUNCATION = 10_000
 
 console = Console()
 
@@ -123,6 +126,29 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"Model context window in tokens (default: {DEFAULT_CONTEXT_LIMIT:,})",
     )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=DEFAULT_MAX_TOKENS,
+        help=f"Max output tokens per LLM call (default: {DEFAULT_MAX_TOKENS})",
+    )
+    parser.add_argument(
+        "--truncation",
+        type=int,
+        default=DEFAULT_TRUNCATION,
+        help=f"Max chars for truncated text in prompts (default: {DEFAULT_TRUNCATION:,})",
+    )
+    parser.add_argument(
+        "--no-truncation",
+        action="store_true",
+        help="Disable all text truncation in prompts",
+    )
+    parser.add_argument(
+        "--context-force-synthesis",
+        type=float,
+        default=0.80,
+        help="Context usage fraction to force synthesis (default: 0.80)",
+    )
     return parser
 
 
@@ -164,6 +190,8 @@ def _execute(task: str, args: argparse.Namespace) -> str:
         env_val = os.environ.get("SAC_CONTEXT_LIMIT")
         context_limit = int(env_val) if env_val else DEFAULT_CONTEXT_LIMIT
 
+    truncation = sys.maxsize if args.no_truncation else args.truncation
+
     sdk = AgenticSearchSDK(
         llm_base_url=base_url,
         llm_api_key=api_key,
@@ -184,6 +212,9 @@ def _execute(task: str, args: argparse.Namespace) -> str:
         with_code_library=args.with_code_library,
         sandbox_backend=sandbox_backend,
         context_limit=context_limit,
+        max_tokens=args.max_tokens,
+        truncation=truncation,
+        context_force_threshold=args.context_force_synthesis,
     )
     return agent.run()
 
