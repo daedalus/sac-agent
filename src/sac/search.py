@@ -205,16 +205,9 @@ class SearchSDK:
             line_stripped = line.strip()
             fm = field_pattern.match(line_stripped)
             if fm:
-                field_name = fm.group(1).lower()
-                field_value = fm.group(2).strip()
-                if field_name == "title":
-                    title = field_value
-                elif field_name == "url":
-                    url = field_value
-                elif field_name == "highlights":
-                    in_highlights = True
-                    if field_value:
-                        snippet_lines.append(field_value)
+                title, url, in_highlights, snippet_lines = self._apply_exa_field(
+                    fm, title, url, in_highlights, snippet_lines
+                )
                 continue
             if in_highlights and line_stripped:
                 snippet_lines.append(line_stripped)
@@ -226,6 +219,26 @@ class SearchSDK:
         return SearchResult(
             url=url, title=title, snippet=snippet, domain=_extract_domain(url)
         )
+
+    @staticmethod
+    def _apply_exa_field(
+        fm: re.Match[str],
+        title: str,
+        url: str,
+        in_highlights: bool,
+        snippet_lines: list[str],
+    ) -> tuple[str, str, bool, list[str]]:
+        field_name = fm.group(1).lower()
+        field_value = fm.group(2).strip()
+        if field_name == "title":
+            title = field_value
+        elif field_name == "url":
+            url = field_value
+        elif field_name == "highlights":
+            in_highlights = True
+            if field_value:
+                snippet_lines.append(field_value)
+        return title, url, in_highlights, snippet_lines
 
     def _parse_exa_json_fallback(self, content: str) -> list[SearchResult]:
         _log("  attempting JSON fallback for Exa content")

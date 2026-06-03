@@ -28,6 +28,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.prompt import Prompt
@@ -182,45 +183,66 @@ def _write_report(path: Path, content: str, fmt: str) -> None:
     console.print(f"\n[green]Report saved to:[/] {path}")
 
 
-def _execute(task: str, args: argparse.Namespace) -> str:
-    if args.no_cache:
-        _disable_cache()
-    base_url = args.endpoint or os.environ.get("OPENAI_API_BASE") or DEFAULT_BASE_URL
-    api_key = args.api_key or os.environ.get("OPENAI_API_KEY") or DEFAULT_API_KEY
-    model = args.model or os.environ.get("SAC_MODEL") or DEFAULT_MODEL
-    brave_key = os.environ.get("BRAVE_SEARCH_API_KEY")
-    http_proxy = args.http_proxy
-    https_proxy = args.https_proxy
-    sandbox_backend = args.sandbox or os.environ.get("SANDBOX_BACKEND") or "exec"
+def _cli_or(
+    args: argparse.Namespace, attr: str, env_var: str, default: str
+) -> str:
+    val: str | None = getattr(args, attr, None)
+    if val is not None:
+        return val
+    env_val = os.environ.get(env_var)
+    if env_val is not None:
+        return env_val
+    return default
+
+
+def _resolve_config(args: argparse.Namespace) -> dict[str, Any]:
     context_limit = args.context_limit
     if context_limit is None:
         env_val = os.environ.get("SAC_CONTEXT_LIMIT")
         context_limit = int(env_val) if env_val else DEFAULT_CONTEXT_LIMIT
-
+    sandbox_backend = args.sandbox
+    if sandbox_backend is None:
+        sandbox_backend = os.environ.get("SANDBOX_BACKEND") or "exec"
     truncation = sys.maxsize if args.no_truncation else args.truncation
+    return {
+        "base_url": _cli_or(args, "endpoint", "OPENAI_API_BASE", DEFAULT_BASE_URL),
+        "api_key": _cli_or(args, "api_key", "OPENAI_API_KEY", DEFAULT_API_KEY),
+        "model": _cli_or(args, "model", "SAC_MODEL", DEFAULT_MODEL),
+        "brave_key": os.environ.get("BRAVE_SEARCH_API_KEY"),
+        "http_proxy": args.http_proxy,
+        "https_proxy": args.https_proxy,
+        "sandbox_backend": sandbox_backend,
+        "context_limit": context_limit,
+        "truncation": truncation,
+    }
 
+
+def _execute(task: str, args: argparse.Namespace) -> str:
+    if args.no_cache:
+        _disable_cache()
+    cfg = _resolve_config(args)
     sdk = AgenticSearchSDK(
-        llm_base_url=base_url,
-        llm_api_key=api_key,
-        llm_model=model,
-        brave_key=brave_key,
-        http_proxy=http_proxy,
-        https_proxy=https_proxy,
+        llm_base_url=cfg["base_url"],
+        llm_api_key=cfg["api_key"],
+        llm_model=cfg["model"],
+        brave_key=cfg["brave_key"],
+        http_proxy=cfg["http_proxy"],
+        https_proxy=cfg["https_proxy"],
     )
     agent = SaCAgent(
         task=task,
         sdk=sdk,
-        base_url=base_url,
-        api_key=api_key,
-        model=model,
+        base_url=cfg["base_url"],
+        api_key=cfg["api_key"],
+        model=cfg["model"],
         max_turns=args.max_turns,
-        http_proxy=http_proxy,
-        https_proxy=https_proxy,
+        http_proxy=cfg["http_proxy"],
+        https_proxy=cfg["https_proxy"],
         with_code_library=args.with_code_library,
-        sandbox_backend=sandbox_backend,
-        context_limit=context_limit,
+        sandbox_backend=cfg["sandbox_backend"],
+        context_limit=cfg["context_limit"],
         max_tokens=args.max_tokens,
-        truncation=truncation,
+        truncation=cfg["truncation"],
         context_force_threshold=args.context_force_synthesis,
         images=args.images,
     )
