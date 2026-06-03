@@ -63,12 +63,14 @@ class SaCAgent:
         http_proxy: str | None = None,
         https_proxy: str | None = None,
         with_code_library: bool = False,
+        sandbox_backend: str = "exec",
     ) -> None:
         self.task = task
         self.max_turns = max_turns
         self.max_fixes_per_turn = max_fixes_per_turn
         self.model = model
         self._with_code_library = with_code_library
+        self._sandbox_backend = sandbox_backend
         self._base_url = (
             base_url
             or os.environ.get("OPENAI_API_BASE")
@@ -82,7 +84,7 @@ class SaCAgent:
             http_proxy=http_proxy,
             https_proxy=https_proxy,
         )
-        self.sandbox = Sandbox(self.sdk)
+        self.sandbox = Sandbox(self.sdk, backend=self._sandbox_backend)
         self.library = (
             CodeLibrary(
                 base_url=self._base_url,

@@ -389,6 +389,17 @@ class TestSaCAgent:
             assert agent.task == "test task"
             assert agent.max_turns == 15
 
+    def test_init_with_sandbox_backend(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
+            agent = SaCAgent(
+                task="test",
+                base_url="http://localhost:0",
+                api_key="test",
+                sandbox_backend="docker",
+            )
+            assert agent._sandbox_backend == "docker"
+            assert agent.sandbox._backend == "docker"
+
     def test_fix_code_extracts_from_fence(self):
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
             agent = SaCAgent(task="x", base_url="http://localhost:0", api_key="test")

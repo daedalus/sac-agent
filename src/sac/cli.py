@@ -111,6 +111,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable verbose logging",
     )
+    parser.add_argument(
+        "--sandbox",
+        default=None,
+        choices=["exec", "docker"],
+        help="Sandbox backend: exec (default, no isolation) or docker (isolated, needs llm-sandbox)",
+    )
     return parser
 
 
@@ -146,6 +152,11 @@ def _execute(task: str, args: argparse.Namespace) -> str:
     brave_key = os.environ.get("BRAVE_SEARCH_API_KEY")
     http_proxy = args.http_proxy
     https_proxy = args.https_proxy
+    sandbox_backend = (
+        args.sandbox
+        or os.environ.get("SANDBOX_BACKEND")
+        or "exec"
+    )
 
     sdk = AgenticSearchSDK(
         llm_base_url=base_url,
@@ -165,6 +176,7 @@ def _execute(task: str, args: argparse.Namespace) -> str:
         http_proxy=http_proxy,
         https_proxy=https_proxy,
         with_code_library=args.with_code_library,
+        sandbox_backend=sandbox_backend,
     )
     return agent.run()
 

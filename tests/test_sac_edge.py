@@ -284,6 +284,42 @@ class TestCLI:
                 main()
                 mock_interactive.assert_called_once()
 
+    def test_main_with_sandbox_docker(self):
+        from sac.cli import main
+
+        with patch("sac.cli.SaCAgent") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.run.return_value = "answer"
+            mock_agent_cls.return_value = mock_agent
+            with patch("sys.argv", ["sac", "--sandbox", "docker", "research"]):
+                main()
+            _, kwargs = mock_agent_cls.call_args
+            assert kwargs["sandbox_backend"] == "docker"
+
+    def test_main_with_sandbox_env_var(self):
+        from sac.cli import _execute
+
+        with patch("sac.cli.SaCAgent") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.run.return_value = "answer"
+            mock_agent_cls.return_value = mock_agent
+            with patch.dict(os.environ, {"SANDBOX_BACKEND": "docker"}):
+                args = MagicMock()
+                args.max_turns = 15
+                args.no_cache = False
+                args.endpoint = None
+                args.api_key = None
+                args.model = None
+                args.http_proxy = None
+                args.https_proxy = None
+                args.with_code_library = False
+                args.sandbox = None
+                args.final_report = None
+                args.final_report_format = "md"
+                _execute("research", args)
+            _, kwargs = mock_agent_cls.call_args
+            assert kwargs["sandbox_backend"] == "docker"
+
 
 class TestFilesystemSDKEdge:
     def test_default_dir_is_tempdir(self):
@@ -300,3 +336,28 @@ class TestSandboxEdge:
             'r = SearchResult(url="https://x.com"); print(r.domain)'
         )
         assert "x.com" in output
+
+    def test_docker_backend_execute(self):
+        sdk = AgenticSearchSDK(llm_api_key="test", llm_base_url="http://localhost:0")
+        result_mock = MagicMock()
+        result_mock.text = "hello from docker"
+        result_mock.return_code = 0
+        session_mock = MagicMock()
+        session_mock.run.return_value = result_mock
+
+        clean = Sandbox._docker_session
+        Sandbox._docker_session = session_mock
+        try:
+            sandbox = Sandbox(sdk, backend="docker")
+            output = sandbox.execute('print("hello")')
+            assert "hello from docker" in output
+        finally:
+            Sandbox._docker_session = clean
+
+    def test_docker_backend_not_installed(self):
+        sdk = AgenticSearchSDK(llm_api_key="test", llm_base_url="http://localhost:0")
+        sandbox = Sandbox(sdk, backend="docker")
+        Sandbox._docker_session = None
+        with patch("builtins.__import__", side_effect=ImportError("no llm-sandbox")):
+            with pytest.raises(ImportError, match="llm-sandbox"):
+                sandbox.execute("print('x')")

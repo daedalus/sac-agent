@@ -33,6 +33,7 @@ test = [
     "pytest-mock",
     "hypothesis",
 ]
+docker = ["llm-sandbox[mcp-docker]"]
 lint = [
     "prospector[with_ruff,with_mypy]",
     "vulture",
