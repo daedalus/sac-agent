@@ -54,9 +54,6 @@ class SearchSDK:
         self.total_results += sum(len(r) for r in results)
         return results
 
-    def neural(self, query: str, limit: int = 8) -> list[SearchResult]:
-        return self._search_one(query, limit)
-
     def _search_one(self, query: str, limit: int) -> list[SearchResult]:
         cache_key = self._cache_key(query, limit)
         cached = self._cache.get(cache_key)
@@ -172,10 +169,9 @@ class SearchSDK:
             _log("empty content, returning []")
             return []
         results: list[SearchResult] = []
-        blocks = re.split(r"\n---+\s*\n", content)
+        blocks = re.split(r"\n-{3,}\s*\n", content)
         _log(f"split into {len(blocks)} blocks")
-        title_pattern = re.compile(r"^Title:\s*(.*)", re.IGNORECASE)
-        url_pattern = re.compile(r"^URL:\s*(.*)", re.IGNORECASE)
+        field_pattern = re.compile(r"^(Title|URL|Highlights|Published|Author|Date|Source|Summary):\s*(.*)", re.IGNORECASE)
 
         for block in blocks:
             block = block.strip()
@@ -187,24 +183,18 @@ class SearchSDK:
             in_highlights = False
             for line in block.split("\n"):
                 line_stripped = line.strip()
-                tm = title_pattern.match(line_stripped)
-                if tm:
-                    title = tm.group(1).strip()
-                    continue
-                um = url_pattern.match(line_stripped)
-                if um:
-                    url = um.group(1).strip()
-                    continue
-                hl_match = re.match(
-                    r"^(Highlights):\s*(.*)", line_stripped, re.IGNORECASE
-                )
-                if hl_match:
-                    in_highlights = True
-                    inline = hl_match.group(2).strip()
-                    if inline:
-                        snippet_lines.append(inline)
-                    continue
-                if re.match(r"^(Published|Author):", line_stripped, re.IGNORECASE):
+                fm = field_pattern.match(line_stripped)
+                if fm:
+                    field_name = fm.group(1).lower()
+                    field_value = fm.group(2).strip()
+                    if field_name == "title":
+                        title = field_value
+                    elif field_name == "url":
+                        url = field_value
+                    elif field_name == "highlights":
+                        in_highlights = True
+                        if field_value:
+                            snippet_lines.append(field_value)
                     continue
                 if in_highlights and line_stripped:
                     snippet_lines.append(line_stripped)
@@ -222,6 +212,23 @@ class SearchSDK:
                 )
             else:
                 _log(f"  skipped block: title={title!r} url={url!r}")
+
+        if not results:
+            _log("  attempting JSON fallback for Exa content")
+            try:
+                parsed = json.loads(content)
+                raw_results = parsed if isinstance(parsed, list) else [parsed]
+                for item in raw_results:
+                    if isinstance(item, dict):
+                        t = item.get("title") or item.get("name", "")
+                        u = item.get("url") or item.get("link", "")
+                        s = item.get("snippet") or item.get("description", "")
+                        if t and u:
+                            results.append(
+                                SearchResult(url=u, title=t, snippet=s, domain=_extract_domain(u))
+                            )
+            except json.JSONDecodeError:
+                pass
 
         _log(f"  parsed {len(results)} results total")
         return results

@@ -26,7 +26,7 @@ class FilesystemSDK:
         safe = self._safe_key(key)
         path = self._dir / safe
         if not path.exists():
-            raise KeyError(f"Key '{key}' not found")
+            raise FileNotFoundError(f"Key '{key}' not found")
         with open(path, "rb") as f:
             return pickle.load(f)
 

@@ -219,7 +219,7 @@ class TestFilesystemSDK:
 
     def test_read_missing_key(self, fs_dir):
         fs = FilesystemSDK(fs_dir)
-        with pytest.raises(KeyError):
+        with pytest.raises(FileNotFoundError):
             fs.read("nonexistent")
 
     def test_list_keys(self, fs_dir):

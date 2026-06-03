@@ -295,7 +295,7 @@ class SaCAgent:
                 }
             )
         else:
-            messages = self._history[-6:]
+            messages = self._history
         resp = self._client.chat.completions.create(
             model=self.model,
             max_tokens=4096,

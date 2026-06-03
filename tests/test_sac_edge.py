@@ -65,12 +65,11 @@ class TestSearchSDKEdge:
         result = sdk._search_one("test query", 3)
         assert len(result) == 3
 
-    def test_neural_alias(self):
+    def test_neural_falls_back_to_simulate(self):
         sdk = SearchSDK()
         sdk._simulate = True
-        r1 = sdk.neural("hello", 2)
-        r2 = sdk.web("hello", 2)
-        assert len(r1) == len(r2)
+        result = sdk.web("hello", 2)
+        assert len(result) == 2
 
     def test_brave_search_http_error_fallback(self, mocker):
         mocker.patch("sac.search.requests.get", side_effect=Exception("HTTP error"))

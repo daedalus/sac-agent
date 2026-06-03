@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 import httpx
 
 VERBOSE = os.environ.get("SAC_VERBOSE", "").lower() in ("1", "true", "yes")
-DEFAULT_PROXY = "http://127.0.0.1:8118"
 
 
 @dataclass
@@ -53,8 +52,10 @@ def _log(msg: str) -> None:
 def _proxy_config(
     http_proxy: str | None = None, https_proxy: str | None = None
 ) -> dict[str, str]:
-    http = http_proxy or os.environ.get("HTTP_PROXY") or DEFAULT_PROXY
-    https = https_proxy or os.environ.get("HTTPS_PROXY") or http or DEFAULT_PROXY
+    http = http_proxy or os.environ.get("HTTP_PROXY")
+    https = https_proxy or os.environ.get("HTTPS_PROXY") or http
+    if not https:
+        return {}
     return {"http": https, "https": https}
 
 

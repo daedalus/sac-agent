@@ -63,7 +63,7 @@ def _sync_init() -> None:
         if mod == "__init__" or mod in seen:
             continue
         seen.add(mod)
-        lines.append(f"from sac_agent.library.{mod} import *\n")
+        lines.append(f"from sac.library.{mod} import *\n")
     init_path = CACHE_DIR / "__init__.py"
     init_path.write_text("".join(lines))
 
