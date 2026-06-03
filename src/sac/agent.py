@@ -11,6 +11,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
 
+from sac.core import _httpx_client
+from sac.library import CodeLibrary
 from sac.sandbox import Sandbox
 from sac.sdk import AgenticSearchSDK
 
@@ -48,11 +50,15 @@ class SaCAgent:
         base_url: str | None = None,
         api_key: str | None = None,
         model: str = "big-pickle",
+        http_proxy: str | None = None,
+        https_proxy: str | None = None,
+        with_code_library: bool = False,
     ) -> None:
         self.task = task
         self.max_turns = max_turns
         self.max_fixes_per_turn = max_fixes_per_turn
         self.model = model
+        self._with_code_library = with_code_library
         self._base_url = (
             base_url
             or os.environ.get("OPENAI_API_BASE")
@@ -63,13 +69,28 @@ class SaCAgent:
             llm_base_url=self._base_url,
             llm_api_key=self._api_key,
             llm_model=model,
+            http_proxy=http_proxy,
+            https_proxy=https_proxy,
         )
         self.sandbox = Sandbox(self.sdk)
+        self.library = (
+            CodeLibrary(
+                base_url=self._base_url,
+                api_key=self._api_key,
+                model=model,
+            )
+            if with_code_library
+            else None
+        )
         self._turn = 0
         self._history: list[dict[str, Any]] = []
         self._start_time = 0.0
 
-        self._client = OpenAI(api_key=self._api_key, base_url=self._base_url)
+        self._client = OpenAI(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            http_client=_httpx_client(http_proxy, https_proxy),
+        )
 
     def _fix_code(self, code: str, error: str, _attempt: int) -> str | None:
         prompt = (
@@ -114,6 +135,8 @@ class SaCAgent:
             action = self._parse_response(response)
 
             if action is None:
+                if self.library:
+                    self.library.flush_all()
                 return "Error: failed to parse agent response."
 
             reasoning = action.get("reasoning", "")
@@ -136,6 +159,8 @@ class SaCAgent:
                         padding=(1, 2),
                     )
                 )
+                if self.library:
+                    self.library.flush_all()
                 return cast("str", answer)
 
             code = action.get("code", "")
@@ -193,6 +218,8 @@ class SaCAgent:
                     )
 
                 if "--- ERROR ---" not in output:
+                    if self.library:
+                        self.library.collect(fixed_code, self.task)
                     break
 
                 fix_attempts += 1
@@ -242,6 +269,8 @@ class SaCAgent:
 
         console.print("\n[yellow]Max turns reached — requesting final synthesis.[/]")
         fallback = self._force_synthesis()
+        if self.library:
+            self.library.flush_all()
         return fallback
 
     def _call_model(self) -> str:

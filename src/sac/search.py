@@ -15,8 +15,15 @@ MCP_EXA_URL = "https://mcp.exa.ai/mcp"
 
 
 class SearchSDK:
-    def __init__(self, brave_key: str | None = None) -> None:
+    def __init__(
+        self,
+        brave_key: str | None = None,
+        http_proxy: str | None = None,
+        https_proxy: str | None = None,
+    ) -> None:
         self._brave_key = brave_key
+        self._http_proxy = http_proxy
+        self._https_proxy = https_proxy
         self._simulate = False
         self.total_queries = 0
         self.total_results = 0
@@ -89,6 +96,7 @@ class SearchSDK:
                 "X-Subscription-Token": self._brave_key,
             },
             params={"q": query, "count": min(limit, 20)},  # type: ignore[arg-type]
+            proxies=_proxy_config(self._http_proxy, self._https_proxy),
             timeout=10,
         )
         resp.raise_for_status()
@@ -127,7 +135,7 @@ class SearchSDK:
                 "Content-Type": "application/json",
                 "Accept": "application/json, text/event-stream",
             },
-            proxies=_proxy_config(),
+            proxies=_proxy_config(self._http_proxy, self._https_proxy),
             timeout=30,
         )
         resp.raise_for_status()

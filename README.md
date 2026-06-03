@@ -44,6 +44,67 @@ sac  # interactive mode
 - `UtilsSDK` — Deduplication, filtering, flattening, coverage summarization
 - `Sandbox` — Executes generated Python code in a restricted namespace
 
+## Code Library
+
+Every code snippet the agent generates can be saved as a reusable, callable function with `--with-code-library`:
+
+```bash
+sac --with-code-library "Research the latest AI papers"
+```
+
+Functions are grouped by concern into `~/.cache/sac-agent/library/` (classification priority: extraction > synthesis > search > storage > analysis > pipeline):
+
+| File | Concern |
+|------|---------|
+| `extraction.py` | `sdk.llm.extract_many` operations |
+| `synthesis.py` | `sdk.llm.synthesize` operations |
+| `search.py` | `sdk.search.*` operations |
+| `storage.py` | `sdk.fs.*` operations |
+| `analysis.py` | `sdk.utils.*` operations |
+| `pipeline.py` | Mixed / catch-all |
+
+Execution flow:
+
+```
+CLI (sac "task")
+  → SaCAgent.run()
+    → _call_model()                   # LLM generates JSON with "code"
+    → sandbox.execute(code)           # exec() in restricted namespace
+    → if successful: library.collect()  # save snippet in memory
+    → repeat up to 6 turns
+    → on synthesis: library.flush_all()
+      → _classify_code() per snippet  # extraction > synthesis > search > ...
+      → append to category file       # search.py / extraction.py / pipeline.py
+```
+
+Each function accepts `sdk` as its first parameter and has a Google-style docstring:
+
+```python
+def search_fanout(sdk, queries, limit_per_query=5, concurrency=3):
+    """Execute parallel searches across multiple queries and flatten results.
+
+    Args:
+        sdk: AgenticSearchSDK instance
+        queries: List of search query strings
+        limit_per_query: Results per query (default: 5)
+        concurrency: Number of parallel workers (default: 3)
+
+    Returns:
+        Flattened list of SearchResult objects
+    """
+    results = sdk.search.web_many(queries, ...)
+    return sdk.utils.flatten(results)
+```
+
+Load functions by name at runtime:
+
+```python
+from sac.library import load_function
+
+fn = load_function("search_fanout_1234")
+results = fn(sdk)
+```
+
 ## Development
 
 ```bash

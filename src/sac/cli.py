@@ -27,7 +27,6 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import cast
 
 from rich.console import Console
 from rich.prompt import Prompt
@@ -80,6 +79,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Report format (default: md)",
     )
     parser.add_argument(
+        "--http-proxy",
+        default=None,
+        help="HTTP proxy URL (default: $HTTP_PROXY or http://127.0.0.1:8118)",
+    )
+    parser.add_argument(
+        "--https-proxy",
+        default=None,
+        help="HTTPS proxy URL (default: $HTTPS_PROXY or --http-proxy value)",
+    )
+    parser.add_argument(
+        "--with-code-library",
+        action="store_true",
+        help="Save generated code snippets to ~/.cache/sac-agent/ as reusable functions",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -116,12 +130,16 @@ def _execute(task: str, args: argparse.Namespace) -> str:
     api_key = args.api_key or os.environ.get("OPENAI_API_KEY") or DEFAULT_API_KEY
     model = args.model or os.environ.get("SAC_MODEL") or DEFAULT_MODEL
     brave_key = os.environ.get("BRAVE_SEARCH_API_KEY")
+    http_proxy = args.http_proxy
+    https_proxy = args.https_proxy
 
     sdk = AgenticSearchSDK(
         llm_base_url=base_url,
         llm_api_key=api_key,
         llm_model=model,
         brave_key=brave_key,
+        http_proxy=http_proxy,
+        https_proxy=https_proxy,
     )
     agent = SaCAgent(
         task=task,
@@ -129,8 +147,11 @@ def _execute(task: str, args: argparse.Namespace) -> str:
         base_url=base_url,
         api_key=api_key,
         model=model,
+        http_proxy=http_proxy,
+        https_proxy=https_proxy,
+        with_code_library=args.with_code_library,
     )
-    return cast("str", agent.run())
+    return agent.run()
 
 
 def main() -> None:

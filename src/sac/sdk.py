@@ -16,12 +16,20 @@ class AgenticSearchSDK:
         llm_model: str = DEFAULT_MODEL,
         fs_dir: str | Path | None = None,
         brave_key: str | None = None,
+        http_proxy: str | None = None,
+        https_proxy: str | None = None,
     ) -> None:
-        self.search = SearchSDK(brave_key=brave_key)
+        self.search = SearchSDK(
+            brave_key=brave_key,
+            http_proxy=http_proxy,
+            https_proxy=https_proxy,
+        )
         self.llm = LLMSDKClient(
             base_url=llm_base_url,
             api_key=llm_api_key,
             model=llm_model,
+            http_proxy=http_proxy,
+            https_proxy=https_proxy,
         )
         self.fs = FilesystemSDK(fs_dir=fs_dir)
         self.utils = UtilsSDK()

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
+import httpx
+
 VERBOSE = os.environ.get("SAC_VERBOSE", "").lower() in ("1", "true", "yes")
 DEFAULT_PROXY = "http://127.0.0.1:8118"
 
@@ -29,16 +31,31 @@ class SearchResult:
         return f"SearchResult(domain={self.domain!r}, title={self.title!r})"
 
 
+def _httpx_client(
+    http_proxy: str | None = None, https_proxy: str | None = None
+) -> httpx.Client | None:
+    proxy_url = (
+        https_proxy
+        or http_proxy
+        or os.environ.get("HTTPS_PROXY")
+        or os.environ.get("HTTP_PROXY")
+    )
+    if proxy_url:
+        return httpx.Client(proxy=proxy_url)
+    return None
+
+
 def _log(msg: str) -> None:
     if VERBOSE:
         print(f"[sac] {msg}", file=sys.stderr)
 
 
-def _proxy_config() -> dict[str, str]:
-    proxy = (
-        os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or DEFAULT_PROXY
-    )
-    return {"http": proxy, "https": proxy}
+def _proxy_config(
+    http_proxy: str | None = None, https_proxy: str | None = None
+) -> dict[str, str]:
+    http = http_proxy or os.environ.get("HTTP_PROXY") or DEFAULT_PROXY
+    https = https_proxy or os.environ.get("HTTPS_PROXY") or http or DEFAULT_PROXY
+    return {"http": https, "https": https}
 
 
 def _extract_domain(url: str) -> str:

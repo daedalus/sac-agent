@@ -7,7 +7,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from sac.core import _format_items
+from sac.core import _format_items, _httpx_client
 
 DEFAULT_BASE_URL = "https://opencode.ai/zen/v1"
 DEFAULT_API_KEY = "public"
@@ -21,6 +21,8 @@ class LLMSDKClient:
         api_key: str | None = None,
         model: str = DEFAULT_MODEL,
         max_tokens: int = 4096,
+        http_proxy: str | None = None,
+        https_proxy: str | None = None,
     ) -> None:
         self._base_url = (
             base_url or os.environ.get("OPENAI_API_BASE") or DEFAULT_BASE_URL
@@ -28,7 +30,11 @@ class LLMSDKClient:
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY") or DEFAULT_API_KEY
         self._model = model
         self._max_tokens = max_tokens
-        self._client = OpenAI(api_key=self._api_key, base_url=self._base_url)
+        self._client = OpenAI(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            http_client=_httpx_client(http_proxy, https_proxy),
+        )
 
     def synthesize(self, items: list[Any], instruction: str) -> str:
         context = _format_items(items)
