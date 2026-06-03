@@ -38,7 +38,7 @@ from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
 
-_CACHE_DIR = pathlib.Path.home() / ".cache" / "sac"
+_CACHE_DIR = pathlib.Path.home() / ".cache" / "sac-agent"
 _DEFAULT_DB_PATH = str(_CACHE_DIR / "cache.db")
 _DEFAULT_MAX_ENTRIES = 5000
 _MAINTENANCE_INTERVAL_WRITES = 25
@@ -370,6 +370,37 @@ class Cache:
 
 
 _cache: Cache | None = None
+_cache_disabled: bool = False
+
+
+class _NullCache:
+    def close(self) -> None:
+        pass
+
+    def get(self, key: str) -> None:
+        return None
+
+    def get_or_sentinel(self, key: str) -> object:
+        return SENTINEL
+
+    def set(self, key: str, value: object, *, ttl_seconds: int | None = None) -> None:
+        pass
+
+    def clear(self) -> None:
+        pass
+
+    def canonicalize_key(self, key: str) -> str:
+        return key.strip()
+
+
+def disable_cache() -> None:
+    global _cache_disabled
+    _cache_disabled = True
+
+
+def enable_cache() -> None:
+    global _cache_disabled
+    _cache_disabled = False
 
 
 def _max_entries_from_env() -> int:
@@ -378,12 +409,14 @@ def _max_entries_from_env() -> int:
         return int(raw)
     except ValueError as exc:
         raise ValueError(
-            f"AIVH_CACHE_MAX_ENTRIES must be an integer; received {raw!r}"
+            f"SAC_CACHE_MAX_ENTRIES must be an integer; received {raw!r}"
         ) from exc
 
 
-def get_cache() -> Cache:
+def get_cache() -> Cache | _NullCache:
     global _cache
+    if _cache_disabled:
+        return _NullCache()
     if _cache is None:
         max_entries = _max_entries_from_env()
         _cache = Cache(max_entries=max_entries)

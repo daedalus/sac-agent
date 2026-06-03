@@ -33,6 +33,7 @@ from rich.prompt import Prompt
 
 from sac import core
 from sac.agent import SaCAgent
+from sac.cache import disable_cache as _disable_cache
 from sac.sdk import AgenticSearchSDK
 
 DEFAULT_BASE_URL = "https://opencode.ai/zen/v1"
@@ -100,6 +101,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum research iterations before synthesis (default: 15)",
     )
     parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable persistent cache (bloom-filter + SQLite)",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -132,6 +138,8 @@ def _write_report(path: Path, content: str, fmt: str) -> None:
 
 
 def _execute(task: str, args: argparse.Namespace) -> str:
+    if args.no_cache:
+        _disable_cache()
     base_url = args.endpoint or os.environ.get("OPENAI_API_BASE") or DEFAULT_BASE_URL
     api_key = args.api_key or os.environ.get("OPENAI_API_KEY") or DEFAULT_API_KEY
     model = args.model or os.environ.get("SAC_MODEL") or DEFAULT_MODEL
