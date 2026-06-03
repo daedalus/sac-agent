@@ -4,6 +4,9 @@ Uses OpenAI-compatible API (opencode Zen by default).
 
 Usage:
     sac "Your research task here"
+    sac -v "Verbose research"
+    sac --endpoint https://opencode.ai/zen/v1 --model big-pickle "task"
+    sac --final-report ./report.md "task"
     sac                         # interactive mode
 
 Requires:
@@ -11,13 +14,20 @@ Requires:
     export OPENAI_API_BASE="https://opencode.ai/zen/v1"   # default
     export OPENAI_API_KEY="public"                         # default
     export SAC_MODEL="big-pickle"                          # default
-    # Exa MCP is free and requires no API key
+
+Reference:
+    Perplexity AI, "Rethinking Search as Code Generation" (2026)
+    https://research.perplexity.ai/articles/rethinking-search-as-code-generation
 """
 
 from __future__ import annotations
 
+import argparse
+import json
 import os
-import sys
+import re
+from pathlib import Path
+from typing import cast
 
 from rich.console import Console
 from rich.prompt import Prompt
@@ -33,26 +43,78 @@ DEFAULT_MODEL = "big-pickle"
 console = Console()
 
 
-def main() -> None:
-    args = sys.argv[1:]
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Search as Code — agentic research orchestration",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Reference: Perplexity AI, 'Rethinking Search as Code Generation' (2026)\n"
+            "https://research.perplexity.ai/articles/rethinking-search-as-code-generation"
+        ),
+    )
+    parser.add_argument("task", nargs="*", help="Research task description")
+    parser.add_argument(
+        "--endpoint",
+        default=None,
+        help=f"OpenAI-compatible API endpoint (default: $OPENAI_API_BASE or {DEFAULT_BASE_URL})",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help=f"Model name (default: $SAC_MODEL or {DEFAULT_MODEL})",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help=f"API key (default: $OPENAI_API_KEY or {DEFAULT_API_KEY})",
+    )
+    parser.add_argument(
+        "--final-report",
+        default=None,
+        help="Path or directory for final report (default: pwd/<task>_synthesis.md)",
+    )
+    parser.add_argument(
+        "--final-report-format",
+        default="md",
+        choices=["md", "txt", "json"],
+        help="Report format (default: md)",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging",
+    )
+    return parser
 
-    if not args or args[0] in ("-h", "--help"):
-        print(__doc__)
-        return
 
-    if "-v" in args or "--verbose" in args:
-        core.VERBOSE = True
-        args = [a for a in args if a not in ("-v", "--verbose")]
+def _resolve_report_path(report_arg: str, task: str, fmt: str) -> Path:
+    p = Path(report_arg)
+    ext = f".{fmt}"
+    if p.is_dir() or (not p.suffix and not p.exists()):
+        safe_name = _safe_filename(task)[:64]
+        return p / f"{safe_name}_synthesis{ext}"
+    return p.with_suffix(ext)
 
-    if not args:
-        print("Usage: sac [-v] <research task>")
-        return
 
-    task = " ".join(args)
+def _safe_filename(text: str) -> str:
+    return re.sub(r"[^\w.-]", "_", text.strip().replace(" ", "_"))
 
-    base_url = os.environ.get("OPENAI_API_BASE") or DEFAULT_BASE_URL
-    api_key = os.environ.get("OPENAI_API_KEY") or DEFAULT_API_KEY
-    model = os.environ.get("SAC_MODEL") or DEFAULT_MODEL
+
+def _write_report(path: Path, content: str, fmt: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if fmt == "json":
+        data = {"answer": content}
+        path.write_text(json.dumps(data, indent=2))
+    else:
+        path.write_text(content)
+    console.print(f"\n[green]Report saved to:[/] {path}")
+
+
+def _execute(task: str, args: argparse.Namespace) -> str:
+    base_url = args.endpoint or os.environ.get("OPENAI_API_BASE") or DEFAULT_BASE_URL
+    api_key = args.api_key or os.environ.get("OPENAI_API_KEY") or DEFAULT_API_KEY
+    model = args.model or os.environ.get("SAC_MODEL") or DEFAULT_MODEL
     brave_key = os.environ.get("BRAVE_SEARCH_API_KEY")
 
     sdk = AgenticSearchSDK(
@@ -68,10 +130,43 @@ def main() -> None:
         api_key=api_key,
         model=model,
     )
-    agent.run()
+    return cast("str", agent.run())
+
+
+def main() -> None:
+    parser = build_parser()
+    parsed = parser.parse_args()
+
+    if parsed.verbose:
+        core.VERBOSE = True
+
+    if not parsed.task:
+        interactive()
+        return
+
+    task = " ".join(parsed.task)
+
+    if parsed.verbose:
+        console.print(
+            f"[dim]Endpoint: {parsed.endpoint or os.environ.get('OPENAI_API_BASE') or DEFAULT_BASE_URL}[/]"
+        )
+        console.print(
+            f"[dim]Model: {parsed.model or os.environ.get('SAC_MODEL') or DEFAULT_MODEL}[/]"
+        )
+
+    answer = _execute(task, parsed)
+
+    if parsed.final_report is not None:
+        path = _resolve_report_path(
+            parsed.final_report, task, parsed.final_report_format
+        )
+        _write_report(path, answer, parsed.final_report_format)
 
 
 def interactive() -> None:
+    parser = build_parser()
+    parsed = parser.parse_args([])
+
     console.print("[bold green]Search as Code (SaC)[/] — interactive mode")
     console.print(
         "[dim]Set BRAVE_SEARCH_API_KEY for Brave search, otherwise Exa MCP (free) or simulation.[/]\n"
@@ -84,22 +179,10 @@ def interactive() -> None:
         if not task.strip():
             continue
 
-        base_url = os.environ.get("OPENAI_API_BASE") or DEFAULT_BASE_URL
-        api_key = os.environ.get("OPENAI_API_KEY") or DEFAULT_API_KEY
-        model = os.environ.get("SAC_MODEL") or DEFAULT_MODEL
-        brave_key = os.environ.get("BRAVE_SEARCH_API_KEY")
+        answer = _execute(task, parsed)
 
-        sdk = AgenticSearchSDK(
-            llm_base_url=base_url,
-            llm_api_key=api_key,
-            llm_model=model,
-            brave_key=brave_key,
-        )
-        agent = SaCAgent(
-            task=task,
-            sdk=sdk,
-            base_url=base_url,
-            api_key=api_key,
-            model=model,
-        )
-        agent.run()
+        if parsed.final_report is not None:
+            path = _resolve_report_path(
+                parsed.final_report, task, parsed.final_report_format
+            )
+            _write_report(path, answer, parsed.final_report_format)

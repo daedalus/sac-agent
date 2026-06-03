@@ -28,7 +28,9 @@ class UtilsSDK:
         return result
 
     @staticmethod
-    def filter_by(items: list[Any], field: str | Callable[..., Any], value: Any | None = None) -> list[Any]:  # noqa: ANN401
+    def filter_by(
+        items: list[Any], field: str | Callable[..., Any], value: Any | None = None
+    ) -> list[Any]:  # noqa: ANN401
         if callable(field):
             return [item for item in items if field(item)]
         return [item for item in items if UtilsSDK._get_value(item, field) == value]

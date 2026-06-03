@@ -84,7 +84,10 @@ class SearchSDK:
         assert self._brave_key is not None
         resp = requests.get(
             "https://api.search.brave.com/res/v1/web/search",
-            headers={"Accept": "application/json", "X-Subscription-Token": self._brave_key},
+            headers={
+                "Accept": "application/json",
+                "X-Subscription-Token": self._brave_key,
+            },
             params={"q": query, "count": min(limit, 20)},  # type: ignore[arg-type]
             timeout=10,
         )

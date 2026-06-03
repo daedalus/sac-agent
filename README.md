@@ -3,6 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/sac.svg)](https://pypi.org/project/sac/)
 [![Python](https://img.shields.io/pypi/pyversions/sac.svg)](https://pypi.org/project/sac/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/master/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-Search%20as%20Code-blue)](https://deepwiki.ai/repo/daedalus/SAC)
 
 ## Install
 
@@ -26,6 +27,9 @@ print(answer)
 ```bash
 sac "What are the latest developments in LLM agents?"
 sac -v "Verbose research mode"
+sac --endpoint https://opencode.ai/zen/v1 --model big-pickle "task"
+sac --final-report ./report.md "task"
+sac --final-report-format json --final-report ./output "task"
 sac  # interactive mode
 ```
 
@@ -63,4 +67,11 @@ vulture --min-confidence 90 src/
 
 # analyze code complexity (lizard reports cyclomatic complexity, NLOC, etc.)
 lizard src/ --CCN=15
+
+## References
+
+This project is inspired by and implements the architecture described in:
+
+> Perplexity AI. "Rethinking Search as Code Generation." *Perplexity Research*, June 1, 2026.
+> <https://research.perplexity.ai/articles/rethinking-search-as-code-generation>
 ```

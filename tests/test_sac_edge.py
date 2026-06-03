@@ -260,8 +260,10 @@ class TestCLI:
         from sac.cli import main
 
         with patch("sys.argv", ["sac", "--help"]):
-            result = main()
-            assert result is None
+            try:
+                main()
+            except SystemExit as e:
+                assert e.code == 0
 
     def test_main_with_task(self):
         from sac.cli import main
@@ -275,12 +277,13 @@ class TestCLI:
                 mock_agent_cls.assert_called_once()
                 mock_agent.run.assert_called_once()
 
-    def test_main_no_args_shows_usage(self):
-        from sac.cli import main
+    def test_main_no_args_interactive(self):
+        from sac.cli import interactive, main
 
-        with patch("sys.argv", ["sac"]):
-            result = main()
-            assert result is None
+        with patch("sac.cli.interactive") as mock_interactive:
+            with patch("sys.argv", ["sac"]):
+                main()
+                mock_interactive.assert_called_once()
 
 
 class TestFilesystemSDKEdge:

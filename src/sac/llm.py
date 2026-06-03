@@ -105,7 +105,9 @@ Only return valid JSON, no other text."""
             content = msg.reasoning_content
         return content or ""
 
-    def _parse_json_list(self, raw: str, schema: dict[str, type | str]) -> list[dict[str, Any]]:
+    def _parse_json_list(
+        self, raw: str, schema: dict[str, type | str]
+    ) -> list[dict[str, Any]]:
         match = re.search(r"\[.*\]", raw, re.DOTALL)
         if not match:
             return []
