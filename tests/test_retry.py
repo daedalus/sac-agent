@@ -11,6 +11,7 @@ from sac.retry import (
     FreeUsageLimitError,
     MaxRetriesExceeded,
     RateLimitError,
+    TransientError,
     calculate_delay,
     with_retry,
 )
@@ -44,6 +45,11 @@ class TestCalculateDelay:
 
 
 class TestWithRetry:
+    @pytest.fixture(autouse=True)
+    def _no_sleep(self):
+        with patch("sac.retry.time.sleep"):
+            yield
+
     def test_success_no_retry(self):
         fn = MagicMock(return_value="ok")
         assert with_retry(fn) == "ok"
@@ -84,6 +90,17 @@ class TestWithRetry:
         assert with_retry(fn, max_retries=2, initial_delay=10.0) == "ok"
         # Should use retry_after=0.1 instead of initial_delay=10.0
         assert fn.call_count == 2
+
+    def test_transient_error_retried(self):
+        fn = MagicMock(side_effect=[TransientError("timeout"), "ok"])
+        assert with_retry(fn) == "ok"
+        assert fn.call_count == 2
+
+    def test_transient_error_exhausted(self):
+        fn = MagicMock(side_effect=TransientError("always timeout"))
+        with pytest.raises(MaxRetriesExceeded):
+            with_retry(fn, max_retries=3)
+        assert fn.call_count == 3
 
 
 class TestRetryIntegration:

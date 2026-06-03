@@ -10,7 +10,7 @@ from urllib.parse import quote_plus
 import requests
 
 from sac.core import SearchResult, _extract_domain, _log, _proxy_config
-from sac.retry import FreeUsageLimitError, RateLimitError, with_retry
+from sac.retry import FreeUsageLimitError, RateLimitError, TransientError, with_retry
 
 MCP_EXA_URL = "https://mcp.exa.ai/mcp"
 
@@ -101,9 +101,9 @@ class SearchSDK:
                     timeout=10,
                 )
             except requests.Timeout as e:
-                raise RateLimitError(f"Brave timeout: {e}") from e
+                raise TransientError(f"Brave timeout: {e}") from e
             except requests.ConnectionError as e:
-                raise RateLimitError(f"Brave connection error: {e}") from e
+                raise TransientError(f"Brave connection error: {e}") from e
             if resp.status_code == 402:
                 raise FreeUsageLimitError(f"Brave 402: {resp.text[:200]}")
             if resp.status_code == 429:
@@ -158,9 +158,9 @@ class SearchSDK:
                     timeout=30,
                 )
             except requests.Timeout as e:
-                raise RateLimitError(f"Exa timeout: {e}") from e
+                raise TransientError(f"Exa timeout: {e}") from e
             except requests.ConnectionError as e:
-                raise RateLimitError(f"Exa connection error: {e}") from e
+                raise TransientError(f"Exa connection error: {e}") from e
             if resp.status_code == 402:
                 raise FreeUsageLimitError(f"Exa 402: {resp.text[:200]}")
             if resp.status_code == 429:

@@ -29,6 +29,10 @@ class FreeUsageLimitError(RetryableError):
     """HTTP 402 — payment required / free usage exhausted."""
 
 
+class TransientError(RetryableError):
+    """Network-level failure (timeout, connection error, DNS failure) — safe to retry."""
+
+
 class MaxRetriesExceeded(Exception):
     """Raised when all retry attempts are exhausted."""
 
