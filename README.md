@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/sac.svg)](https://pypi.org/project/sac/)
 [![Python](https://img.shields.io/pypi/pyversions/sac.svg)](https://pypi.org/project/sac/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/master/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![DeepWiki](https://img.shields.io/badge/DeepWiki-Search%20as%20Code-blue)](https://deepwiki.ai/repo/daedalus/SAC)
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-Search%20as%20Code-blue)](https://deepwiki.com/daedalus/SAC)
 
 ## Install
 
