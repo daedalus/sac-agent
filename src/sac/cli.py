@@ -94,6 +94,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Save generated code snippets to ~/.cache/sac-agent/ as reusable functions",
     )
     parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=6,
+        help="Maximum research iterations before synthesis (default: 6)",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -147,6 +153,7 @@ def _execute(task: str, args: argparse.Namespace) -> str:
         base_url=base_url,
         api_key=api_key,
         model=model,
+        max_turns=args.max_turns,
         http_proxy=http_proxy,
         https_proxy=https_proxy,
         with_code_library=args.with_code_library,
