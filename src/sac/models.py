@@ -35,6 +35,11 @@ class ModelLimits:
     _last_fetch: float = 0
 
     @classmethod
+    def reset_cache(cls) -> None:
+        cls._cache = None
+        cls._last_fetch = 0
+
+    @classmethod
     def get_context_limit(cls, model: str, override: int | None = None) -> int:
         if override is not None:
             return override

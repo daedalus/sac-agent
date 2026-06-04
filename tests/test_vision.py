@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import base64
-import os
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -20,84 +18,56 @@ def _fake_llm_client() -> MagicMock:
 
 
 class TestImageToDataUri:
-    def test_png(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            f.write(b"fake_png_bytes")
-            p = f.name
-        try:
-            uri = image_to_data_uri(p)
-            assert uri.startswith("data:image/png;base64,")
-            encoded = uri.split(",", 1)[1]
-            assert base64.b64decode(encoded) == b"fake_png_bytes"
-        finally:
-            os.unlink(p)
+    def test_png(self, tmp_path: Path) -> None:
+        p = tmp_path / "img.png"
+        p.write_bytes(b"fake_png_bytes")
+        uri = image_to_data_uri(p)
+        assert uri.startswith("data:image/png;base64,")
+        encoded = uri.split(",", 1)[1]
+        assert base64.b64decode(encoded) == b"fake_png_bytes"
 
-    def test_jpg(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
-            f.write(b"fake_jpg_bytes")
-            p = f.name
-        try:
-            uri = image_to_data_uri(p)
-            assert uri.startswith("data:image/jpeg;base64,")
-        finally:
-            os.unlink(p)
+    def test_jpg(self, tmp_path: Path) -> None:
+        p = tmp_path / "img.jpg"
+        p.write_bytes(b"fake_jpg_bytes")
+        uri = image_to_data_uri(p)
+        assert uri.startswith("data:image/jpeg;base64,")
 
-    def test_svg(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as f:
-            f.write(b"<svg></svg>")
-            p = f.name
-        try:
-            uri = image_to_data_uri(p)
-            assert uri.startswith("data:image/svg+xml;base64,")
-        finally:
-            os.unlink(p)
+    def test_svg_raises_value_error(self, tmp_path: Path) -> None:
+        p = tmp_path / "img.svg"
+        p.write_bytes(b"<svg></svg>")
+        with pytest.raises(ValueError, match="SVG images are not supported"):
+            image_to_data_uri(p)
 
-    def test_tiff(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".tiff", delete=False) as f:
-            f.write(b"fake_tiff_bytes")
-            p = f.name
-        try:
-            uri = image_to_data_uri(p)
-            assert uri.startswith("data:image/tiff;base64,")
-        finally:
-            os.unlink(p)
+    def test_tiff(self, tmp_path: Path) -> None:
+        p = tmp_path / "img.tiff"
+        p.write_bytes(b"fake_tiff_bytes")
+        uri = image_to_data_uri(p)
+        assert uri.startswith("data:image/tiff;base64,")
 
-    def test_unknown_extension_falls_back_to_png(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".foo", delete=False) as f:
-            f.write(b"fake_bytes")
-            p = f.name
-        try:
-            uri = image_to_data_uri(p)
-            assert uri.startswith("data:image/png;base64,")
-        finally:
-            os.unlink(p)
+    def test_unknown_extension_falls_back_to_png(self, tmp_path: Path) -> None:
+        p = tmp_path / "img.foo"
+        p.write_bytes(b"fake_bytes")
+        uri = image_to_data_uri(p)
+        assert uri.startswith("data:image/png;base64,")
 
-    def test_accepts_path_object(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            f.write(b"data")
-            p = f.name
-        try:
-            uri = image_to_data_uri(Path(p))
-            assert uri.startswith("data:image/png;base64,")
-        finally:
-            os.unlink(p)
+    def test_accepts_path_object(self, tmp_path: Path) -> None:
+        p = tmp_path / "img.png"
+        p.write_bytes(b"data")
+        uri = image_to_data_uri(Path(p))
+        assert uri.startswith("data:image/png;base64,")
 
 
 class TestVisionSDK:
-    def test_analyze_with_file_path(self) -> None:
+    def test_analyze_with_file_path(self, tmp_path: Path) -> None:
         llm = _fake_llm_client()
         vs = VisionSDK(llm=llm)
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            f.write(b"img_bytes")
-            p = f.name
-        try:
-            result = vs.analyze(p, "What is this?")
-            assert result == "analysis result"
-            _, images = llm.call_with_images.call_args[0]
-            assert len(images) == 1
-            assert images[0].startswith("data:image/png;base64,")
-        finally:
-            os.unlink(p)
+        p = tmp_path / "img.png"
+        p.write_bytes(b"img_bytes")
+        result = vs.analyze(str(p), "What is this?")
+        assert result == "analysis result"
+        _, images = llm.call_with_images.call_args[0]
+        assert len(images) == 1
+        assert images[0].startswith("data:image/png;base64,")
 
     def test_analyze_with_bytes(self) -> None:
         llm = _fake_llm_client()

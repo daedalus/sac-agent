@@ -31,11 +31,8 @@ class TestModelLimits:
 
     @pytest.fixture
     def _isolated(self, tmp_path):
-        with (
-            patch.object(ModelLimits, "_cache", None),
-            patch.object(ModelLimits, "_last_fetch", 0),
-            patch("sac.models.CACHE_DIR", tmp_path / "cache"),
-        ):
+        ModelLimits.reset_cache()
+        with patch("sac.models.CACHE_DIR", tmp_path / "cache"):
             yield
 
     def test_fallback_when_all_sources_unavailable(self, _isolated):

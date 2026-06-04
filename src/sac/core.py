@@ -66,21 +66,27 @@ def _extract_domain(url: str) -> str:
     return parsed.netloc or ""
 
 
+_IMAGE_MIME: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".tiff": "image/tiff",
+    ".tif": "image/tiff",
+}
+
+
 def image_to_data_uri(path: str | Path) -> str:
     p = Path(path)
     suffix = p.suffix.lower()
-    mime_map = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-        ".bmp": "image/bmp",
-        ".tiff": "image/tiff",
-        ".tif": "image/tiff",
-        ".svg": "image/svg+xml",
-    }
-    mime = mime_map.get(suffix, "image/png")
+    if suffix == ".svg":
+        raise ValueError(
+            "SVG images are not supported by vision APIs. "
+            "Convert to PNG first (e.g. with cairosvg, Inkscape, or a screenshot)."
+        )
+    mime = _IMAGE_MIME.get(suffix, "image/png")
     b64 = base64.b64encode(p.read_bytes()).decode()
     return f"data:{mime};base64,{b64}"
 
