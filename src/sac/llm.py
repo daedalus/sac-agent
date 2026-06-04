@@ -130,8 +130,9 @@ Only return valid JSON, no other text."""
             result = msg.reasoning_content
         return result or ""
 
+    @staticmethod
     def _parse_json_list(
-        self, raw: str, schema: dict[str, type | str]
+        raw: str, schema: dict[str, type | str]
     ) -> list[dict[str, Any]]:
         match = re.search(r"\[.*\]", raw, re.DOTALL)
         if not match:

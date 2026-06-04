@@ -31,7 +31,8 @@ class SearchSDK:
         self.total_results = 0
         self._cache: dict[str, list[SearchResult]] = {}
 
-    def _cache_key(self, query: str, limit: int) -> str:
+    @staticmethod
+    def _cache_key(query: str, limit: int) -> str:
         return f"{query}:::{limit}"
 
     def clear_cache(self) -> None:
@@ -86,8 +87,9 @@ class SearchSDK:
             self._cache[cache_key] = results
             return results
 
+    @staticmethod
     def _with_http_retry(
-        self, make_request: Callable[[], requests.Response], source: str
+        make_request: Callable[[], requests.Response], source: str
     ) -> requests.Response:
         def _do_request() -> requests.Response:
             try:
@@ -240,7 +242,8 @@ class SearchSDK:
                 snippet_lines.append(field_value)
         return title, url, in_highlights, snippet_lines
 
-    def _parse_exa_json_fallback(self, content: str) -> list[SearchResult]:
+    @staticmethod
+    def _parse_exa_json_fallback(content: str) -> list[SearchResult]:
         _log("  attempting JSON fallback for Exa content")
         results: list[SearchResult] = []
         try:
