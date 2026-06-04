@@ -9,6 +9,10 @@ from sac.models import CACHE_DIR, ModelLimits
 
 
 class TestModelLimits:
+    @pytest.fixture(autouse=True)
+    def _reset(self) -> None:
+        ModelLimits.reset_cache()
+
     def test_known_model(self):
         limit = ModelLimits.get_context_limit("gpt-4o")
         assert limit == 128000
@@ -31,7 +35,6 @@ class TestModelLimits:
 
     @pytest.fixture
     def _isolated(self, tmp_path):
-        ModelLimits.reset_cache()
         with patch("sac.models.CACHE_DIR", tmp_path / "cache"):
             yield
 
