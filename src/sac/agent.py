@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import re
 import time
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -124,6 +126,7 @@ class SaCAgent:
             max_chars=truncation,
         )
         self.sandbox = Sandbox(self.sdk, backend=self._sandbox_backend)
+        atexit.register(self.sandbox.close)
         self.library = (
             CodeLibrary(
                 base_url=self._base_url,
@@ -146,6 +149,14 @@ class SaCAgent:
     def _record_usage(self, resp: Any, tracker: UsageTracker | None = None) -> None:
         usage = getattr(resp, "usage", None)
         if usage is None:
+            if not getattr(self, "_usage_warned", False):
+                warnings.warn(
+                    "LLM response missing 'usage' field — context tracking "
+                    "will show 0% and force-synthesis threshold is unreachable. "
+                    "Ensure the provider returns usage metadata.",
+                    stacklevel=2,
+                )
+                self._usage_warned = True
             return
         t = tracker or self._usage
         pt = getattr(usage, "prompt_tokens", None)

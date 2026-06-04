@@ -76,6 +76,9 @@ def image_to_data_uri(path: str | Path) -> str:
         ".gif": "image/gif",
         ".webp": "image/webp",
         ".bmp": "image/bmp",
+        ".tiff": "image/tiff",
+        ".tif": "image/tiff",
+        ".svg": "image/svg+xml",
     }
     mime = mime_map.get(suffix, "image/png")
     b64 = base64.b64encode(p.read_bytes()).decode()
