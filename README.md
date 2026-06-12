@@ -137,3 +137,15 @@ This project is inspired by and implements the architecture described in:
 > Perplexity AI. "Rethinking Search as Code Generation." *Perplexity Research*, June 1, 2026.
 > <https://research.perplexity.ai/articles/rethinking-search-as-code-generation>
 ```
+
+## Cite
+
+```bibtex
+@misc{clavijo2026sac,
+  author       = {Dario Clavijo},
+  title        = {sac-agent: search as code paper implementation.},
+  year         = {2026},
+  howpublished = {GitHub},
+  url          = {https://github.com/daedalus/sac-agent},
+}
+```
