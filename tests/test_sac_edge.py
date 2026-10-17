@@ -461,6 +461,7 @@ class TestCLI:
                 args.endpoint = None
                 args.api_key = None
                 args.model = None
+                args.search_provider = "auto"
                 args.http_proxy = None
                 args.https_proxy = None
                 args.with_code_library = False

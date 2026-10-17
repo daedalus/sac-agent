@@ -58,6 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("task", nargs="*", help="Research task description")
     parser.add_argument(
+        "--search-provider",
+        choices=["auto", "exa", "brave", "parallel"],
+        default="auto",
+        help="Search backend (default: auto, Brave when configured, otherwise Exa)",
+    )
+    parser.add_argument(
         "--endpoint",
         default=None,
         help=f"OpenAI-compatible API endpoint (default: $OPENAI_API_BASE or {DEFAULT_BASE_URL})",
@@ -183,9 +189,7 @@ def _write_report(path: Path, content: str, fmt: str) -> None:
     console.print(f"\n[green]Report saved to:[/] {path}")
 
 
-def _cli_or(
-    args: argparse.Namespace, attr: str, env_var: str, default: str
-) -> str:
+def _cli_or(args: argparse.Namespace, attr: str, env_var: str, default: str) -> str:
     val: str | None = getattr(args, attr, None)
     if val is not None:
         return val
@@ -226,6 +230,7 @@ def _execute(task: str, args: argparse.Namespace) -> str:
         llm_api_key=cfg["api_key"],
         llm_model=cfg["model"],
         brave_key=cfg["brave_key"],
+        search_provider=args.search_provider,
         http_proxy=cfg["http_proxy"],
         https_proxy=cfg["https_proxy"],
     )

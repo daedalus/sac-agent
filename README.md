@@ -38,11 +38,41 @@ sac  # interactive mode
 
 - `AgenticSearchSDK` — Composable SDK with `search`, `llm`, `fs`, `utils` attributes
 - `SaCAgent` — Multi-turn research agent that generates and executes search code
-- `SearchSDK` — Web search via Exa MCP (free) or Brave Search API
+- `SearchSDK` — Web search via Exa MCP (free), Brave Search API, or Parallel Search MCP
 - `LLMSDKClient` — LLM integration via OpenAI-compatible API
 - `FilesystemSDK` — Persistent key-value store
 - `UtilsSDK` — Deduplication, filtering, flattening, coverage summarization
 - `Sandbox` — Executes generated Python code in a restricted namespace
+
+## Search providers
+
+Use [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp)
+for free web search with source URLs and excerpts, without an account or API key.
+Anonymous search uses Fast mode and is subject to the service's free usage limits.
+
+```bash
+sac --search-provider parallel "Recent research on retrieval-augmented generation"
+```
+
+The same backend is available to generated research code through the SDK:
+
+```python
+sdk = AgenticSearchSDK(search_provider="parallel")
+results = sdk.search.web("retrieval augmented generation research", limit=5)
+```
+
+`search_provider` also accepts `auto` (the default), `exa`, and `brave`.
+`auto` retains the existing Brave → Exa → simulation fallback chain, using Brave
+when its key is configured. Explicit selection overrides that chain; Parallel
+errors, including exhausted free usage and timeouts, propagate to the caller
+instead of switching providers or returning simulated results. The agent's normal
+code-error handling can then report or act on the error. Brave requires a
+`brave_key` in the SDK or `BRAVE_SEARCH_API_KEY` for the CLI.
+
+Parallel uses the existing HTTP/HTTPS proxy settings and a 30-second timeout per
+MCP request. Results are limited locally by `limit`, cached for the SDK instance,
+and work with `web_many`. This provider implements web search; it does not expose
+the MCP's page-fetching tool.
 
 ## Code Library
 
