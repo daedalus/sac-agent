@@ -4,14 +4,18 @@ import concurrent.futures
 import json
 import re
 import sys
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus
+from uuid import uuid4
 
 import requests
 
 from sac.core import SearchResult, _extract_domain, _log, _proxy_config
+from sac.parallel import search as parallel_search
 from sac.retry import FreeUsageLimitError, RateLimitError, TransientError, with_retry
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 MCP_EXA_URL = "https://mcp.exa.ai/mcp"
 
@@ -22,7 +26,14 @@ class SearchSDK:
         brave_key: str | None = None,
         http_proxy: str | None = None,
         https_proxy: str | None = None,
+        search_provider: str = "auto",
     ) -> None:
+        if search_provider not in ("auto", "exa", "brave", "parallel"):
+            raise ValueError("search_provider must be auto, exa, brave or parallel")
+        if search_provider == "brave" and not brave_key:
+            raise ValueError("Brave search requires a brave_key")
+        self._search_provider = search_provider
+        self._parallel_session_id = str(uuid4())
         self._brave_key = brave_key
         self._http_proxy = http_proxy
         self._https_proxy = https_proxy
@@ -66,6 +77,20 @@ class SearchSDK:
 
         if self._simulate:
             results = self._simulate_results(query, limit)
+            self._cache[cache_key] = results
+            return results
+        if self._search_provider != "auto":
+            if self._search_provider == "parallel":
+                results = parallel_search(
+                    query,
+                    limit,
+                    self._parallel_session_id,
+                    _proxy_config(self._http_proxy, self._https_proxy),
+                )
+            elif self._search_provider == "brave":
+                results = self._brave_search(query, limit)
+            else:
+                results = self._exa_mcp_search(query, limit)
             self._cache[cache_key] = results
             return results
         if self._brave_key:

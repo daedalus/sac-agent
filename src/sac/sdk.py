@@ -21,11 +21,13 @@ class AgenticSearchSDK:
         https_proxy: str | None = None,
         llm_max_tokens: int = 8192,
         max_chars: int = 10000,
+        search_provider: str = "auto",
     ) -> None:
         self.search = SearchSDK(
             brave_key=brave_key,
             http_proxy=http_proxy,
             https_proxy=https_proxy,
+            search_provider=search_provider,
         )
         self.llm = LLMSDKClient(
             base_url=llm_base_url,

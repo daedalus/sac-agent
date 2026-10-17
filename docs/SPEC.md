@@ -12,7 +12,7 @@ execution environment with persistent key-value storage.
 ### What IS in scope
 
 - Multi-turn research agent that generates Python code to search, extract, and synthesize
-- Web search via Exa MCP (free) or Brave Search API (with key)
+- Web search via Exa MCP (free), Brave Search API (with key), or optional Parallel Search MCP (free)
 - LLM integration via any OpenAI-compatible API (default: opencode Zen)
 - Persistent key-value file store for inter-turn state
 - Code sandbox that executes generated Python with a restricted `sdk` namespace
@@ -66,7 +66,12 @@ class SearchSDK:
 
 - `web()` and `neural()` are aliases for `_search_one`
 - Caches results by `query:::limit` key
-- Falls back through: Brave → Exa MCP → simulation
+- Default (`search_provider="auto"`) falls back through: Brave → Exa MCP → simulation
+- Explicit `search_provider="parallel"` uses anonymous Parallel Search MCP over
+  Streamable HTTP and returns source URLs, titles and excerpts as `SearchResult`
+  objects. Failures propagate without provider fallback or simulated results.
+- `search_provider="exa"` and `"brave"` select the existing backend directly;
+  Brave selection requires a key.
 
 ### `sac.llm.LLMSDKClient`
 
